@@ -1,0 +1,2 @@
+# NESAKO
+FastAPI NESAKO aplikacija
