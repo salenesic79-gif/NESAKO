@@ -5,7 +5,7 @@ import os
 
 app = FastAPI()
 
-# Kreiranje OpenAI klijenta sa API ključem iz okruženja
+# Ispravno za novu openai biblioteku (>= 1.0.0)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.get("/", response_class=HTMLResponse)
