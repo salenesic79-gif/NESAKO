@@ -1,2 +1,3 @@
 # NESAKO
-FastAPI NESAKO aplikacija
+fastapi
+uvicorn
