@@ -1,3 +1,2 @@
 fastapi
 uvicorn
-Dodao requirements.txt
