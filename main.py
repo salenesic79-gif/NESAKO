@@ -54,4 +54,4 @@ async def handle_chat(pitanje: str = Form(...)):
             <a href="/" style="text-decoration:none;color:blue;">↩ Pošalji novo pitanje</a>
         </body>
     </html>
-    """
+   """
