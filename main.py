@@ -9,7 +9,7 @@ API_URL = "https://api.groq.com/openai/v1/chat/completions"
 API_KEY = os.getenv("GROQ_API_KEY")
 
 headers = {
-    "Authorization": f"Bearer " + API_KEY,
+    "Authorization": f"Bearer {API_KEY}",
     "Content-Type": "application/json"
 }
 
@@ -44,6 +44,7 @@ async def odgovori(pitanje: str = Form(...)):
         response = requests.post(API_URL, headers=headers, json=data)
         output = response.json()
 
+        # Debug - prikaz Groq odgovora u logu
         print("=== GROQ API RESPONSE ===")
         print(output)
 
