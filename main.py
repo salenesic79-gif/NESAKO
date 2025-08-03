@@ -9,7 +9,7 @@ API_URL = "https://api.groq.com/openai/v1/chat/completions"
 API_KEY = os.getenv("GROQ_API_KEY")
 
 headers = {
-    "Authorization": f"Bearer {API_KEY}",
+    "Authorization": f"Bearer " + API_KEY,
     "Content-Type": "application/json"
 }
 
@@ -32,9 +32,9 @@ def index():
 @app.post("/", response_class=HTMLResponse)
 async def odgovori(pitanje: str = Form(...)):
     data = {
-        "model": "mixtral-8x7b",
+        "model": "llama3-8b-8192",
         "messages": [
-            {"role": "system", "content": "Ti si NESAKO AI asistent. Odgovaraj korisno, jasno i na srpskom jeziku."},
+            {"role": "system", "content": "Ti si NESAKO AI asistent. Odgovaraj jasno, korisno i na srpskom jeziku."},
             {"role": "user", "content": pitanje}
         ],
         "temperature": 0.7
@@ -44,16 +44,13 @@ async def odgovori(pitanje: str = Form(...)):
         response = requests.post(API_URL, headers=headers, json=data)
         output = response.json()
 
-        # Ispiši kompletan API odgovor za debag
-        print("=== GROQ ODGOVOR ===")
+        print("=== GROQ API RESPONSE ===")
         print(output)
 
-        # Izvuci odgovor
         odgovor = output['choices'][0]['message']['content']
     except Exception as e:
         try:
-            error_text = response.text
-            odgovor = f"(API greška: {error_text})"
+            odgovor = f"(API greška: {response.text})"
         except:
             odgovor = f"(Greška: {e})"
 
