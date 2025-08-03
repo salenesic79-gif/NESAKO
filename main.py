@@ -34,7 +34,7 @@ async def odgovori(pitanje: str = Form(...)):
     data = {
         "model": "mixtral-8x7b-32768",
         "messages": [
-            {"role": "system", "content": "Ti si pomoćnik NESAKO AI. Odgovaraj jasno, korisno i precizno."},
+            {"role": "system", "content": "Ti si NESAKO AI asistent. Odgovaraj korisno, jasno i na srpskom jeziku."},
             {"role": "user", "content": pitanje}
         ],
         "temperature": 0.7
@@ -43,16 +43,26 @@ async def odgovori(pitanje: str = Form(...)):
     try:
         response = requests.post(API_URL, headers=headers, json=data)
         output = response.json()
+
+        # Ispiši odgovor za debag
+        print("=== GROQ ODGOVOR ===")
+        print(output)
+
+        # Pokušaj da uzmeš odgovor
         odgovor = output['choices'][0]['message']['content']
     except Exception as e:
-        odgovor = f"(Greška: {e})"
+        try:
+            error_text = response.text
+            odgovor = f"(API greška: {error_text})"
+        except:
+            odgovor = f"(Greška: {e})"
 
     return f"""
     <html>
         <head><title>Odgovor</title></head>
         <body style="font-family:sans-serif;padding:20px;">
             <h2>Pitanje:</h2><p>{pitanje}</p>
-            <h2>Odgovor:</h2><p>{odgovor}</p>
+            <h2>Odgovor NESAKO:</h2><p>{odgovor}</p>
             <br><a href="/">↩ Novi upit</a>
         </body>
     </html>
