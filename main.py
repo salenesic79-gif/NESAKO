@@ -32,7 +32,7 @@ def index():
 @app.post("/", response_class=HTMLResponse)
 async def odgovori(pitanje: str = Form(...)):
     data = {
-        "model": "mixtral-8x7b-32768",
+        "model": "mixtral-8x7b",
         "messages": [
             {"role": "system", "content": "Ti si NESAKO AI asistent. Odgovaraj korisno, jasno i na srpskom jeziku."},
             {"role": "user", "content": pitanje}
@@ -44,11 +44,11 @@ async def odgovori(pitanje: str = Form(...)):
         response = requests.post(API_URL, headers=headers, json=data)
         output = response.json()
 
-        # Ispiši odgovor za debag
+        # Ispiši kompletan API odgovor za debag
         print("=== GROQ ODGOVOR ===")
         print(output)
 
-        # Pokušaj da uzmeš odgovor
+        # Izvuci odgovor
         odgovor = output['choices'][0]['message']['content']
     except Exception as e:
         try:
