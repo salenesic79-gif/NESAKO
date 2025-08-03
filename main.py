@@ -1,60 +1,59 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse
-from openai import OpenAI
+import requests
 import os
 
 app = FastAPI()
 
-# Ispravno za novu openai biblioteku (>= 1.0.0)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+API_URL = "https://api.groq.com/openai/v1/chat/completions"
+API_KEY = os.getenv("GROQ_API_KEY")
+
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
 
 @app.get("/", response_class=HTMLResponse)
-def forma():
+def index():
     return """
     <html>
-        <head>
-            <title>NESAKO Chat</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-        </head>
-        <body style="font-family:sans-serif; padding:20px;">
-            <h2>🤖 Dobrodošao u NESAKO AI</h2>
+        <head><title>NESAKO (Groq AI)</title></head>
+        <body style="font-family:sans-serif;padding:20px;">
+            <h2>NESAKO sa Groq AI</h2>
             <form method="post">
-                <input type="text" name="pitanje" id="pitanje" placeholder="Unesi pitanje..." 
-                    style="width:100%; padding:10px; font-size:18px;" autofocus required/>
+                <input type="text" name="pitanje" placeholder="Unesi pitanje..." style="width:100%;padding:10px;" required />
                 <br><br>
-                <button type="submit" style="padding:10px 20px; font-size:16px;">Pošalji</button>
+                <button type="submit" style="padding:10px 20px;">Pošalji</button>
             </form>
-            <script>
-                document.getElementById("pitanje").focus();
-            </script>
         </body>
     </html>
     """
 
 @app.post("/", response_class=HTMLResponse)
 async def odgovori(pitanje: str = Form(...)):
+    data = {
+        "model": "mixtral-8x7b-32768",
+        "messages": [
+            {"role": "system", "content": "Ti si pomoćnik NESAKO AI. Odgovaraj jasno, korisno i precizno."},
+            {"role": "user", "content": pitanje}
+        ],
+        "temperature": 0.7
+    }
+
     try:
-        odgovor = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": pitanje}]
-        )
-        rezultat = odgovor.choices[0].message.content
+        response = requests.post(API_URL, headers=headers, json=data)
+        output = response.json()
+        odgovor = output['choices'][0]['message']['content']
     except Exception as e:
-        rezultat = f"(Greška: {e})"
+        odgovor = f"(Greška: {e})"
 
     return f"""
     <html>
-        <head>
-            <title>Odgovor iz NESAKO</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-        </head>
-        <body style="font-family:sans-serif; padding:20px;">
-            <h2>Pitanje:</h2>
-            <p>{pitanje}</p>
-            <h2>Odgovor:</h2>
-            <p>{rezultat}</p>
-            <br>
-            <a href="/" style="text-decoration:none; color:blue;">↩ Pošalji novo pitanje</a>
+        <head><title>Odgovor</title></head>
+        <body style="font-family:sans-serif;padding:20px;">
+            <h2>Pitanje:</h2><p>{pitanje}</p>
+            <h2>Odgovor:</h2><p>{odgovor}</p>
+            <br><a href="/">↩ Novi upit</a>
         </body>
     </html>
     """
