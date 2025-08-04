@@ -1,136 +1,107 @@
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-import requests
-import os
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+from typing import List, Optional
 
-app = FastAPI()
+app = FastAPI(title="TovarTaxi by NESAKO")
 
-# === NESAKO: DODATNI KOD POČINJE OVDE ===
+templates = Jinja2Templates(directory="templates")
 
-dodatni_kod = ""
+# ---------------------- MODELI ----------------------
 
-# === NESAKO: DODATNI KOD ZAVRŠAVA OVDE ===
+class User(BaseModel):
+    id: int
+    name: str
+    role: str  # "driver" ili "client"
+    rating: float = 0.0
+    is_blocked: bool = False
 
-API_URL = "https://api.groq.com/openai/v1/chat/completions"
-API_KEY = os.getenv("GROQ_API_KEY")
+class Shipment(BaseModel):
+    id: int
+    client_id: int
+    driver_id: Optional[int] = None
+    status: str = "pending"
+    scheduled_time: Optional[str] = None
+    qr_code: Optional[str] = None
 
-headers = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json"
-}
+class Feedback(BaseModel):
+    user_id: int
+    shipment_id: int
+    rating: int
+    comment: Optional[str] = ""
 
-istorija_poruka = []
-core_instructions = "Ti si NESAKO AI asistent. Odgovaraj jasno, korisno i na srpskom jeziku."
+class Violation(BaseModel):
+    user_id: int
+    reason: str
+
+class Stats(BaseModel):
+    user_id: int
+    deliveries: int
+    rating: float
+    earnings: float
+
+# ---------------------- MOCK BAZE ----------------------
+
+users = []
+shipments = []
+violations = []
+feedbacks = []
+stats = []
+
+# ---------------------- RUTE ----------------------
 
 @app.get("/", response_class=HTMLResponse)
-def index():
-    return prikazi_chat()
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/", response_class=HTMLResponse)
-async def odgovori(pitanje: str = Form(...)):
-    global istorija_poruka
+@app.post("/register")
+def register_user(user: User):
+    users.append(user)
+    return {"status": "registered", "user_id": user.id}
 
-    if not istorija_poruka:
-        istorija_poruka = [{"role": "system", "content": core_instructions}]
-        if dodatni_kod.strip():
-            istorija_poruka.append({"role": "system", "content": f"Implementiraj sledeći kod:\n{dodatni_kod}"})
+@app.post("/shipment/create")
+def create_shipment(shipment: Shipment):
+    shipments.append(shipment)
+    return {"status": "shipment_created", "shipment_id": shipment.id}
 
-    istorija_poruka.append({"role": "user", "content": pitanje})
+@app.post("/shipment/scan")
+def scan_qr(shipment_id: int):
+    for shipment in shipments:
+        if shipment.id == shipment_id:
+            shipment.status = "picked"
+            return {"status": "scanned", "shipment": shipment}
+    raise HTTPException(status_code=404, detail="Shipment not found")
 
-    data = {
-        "model": "llama3-8b-8192",
-        "messages": istorija_poruka,
-        "temperature": 0.7
-    }
+@app.post("/feedback")
+def leave_feedback(f: Feedback):
+    feedbacks.append(f)
+    return {"status": "feedback_saved"}
 
-    try:
-        response = requests.post(API_URL, headers=headers, json=data)
-        output = response.json()
-        odgovor = output['choices'][0]['message']['content']
-        istorija_poruka.append({"role": "assistant", "content": odgovor})
-    except Exception as e:
-        try:
-            odgovor = f"(API greška: {response.text})"
-        except:
-            odgovor = f"(Greška: {e})"
-        istorija_poruka.append({"role": "assistant", "content": odgovor})
+@app.get("/stats/{user_id}")
+def get_stats(user_id: int):
+    for s in stats:
+        if s.user_id == user_id:
+            return s
+    raise HTTPException(status_code=404, detail="No stats found")
 
-    return prikazi_chat()
+@app.post("/report-violation")
+def report_violation(v: Violation):
+    violations.append(v)
+    return {"status": "violation_reported"}
 
-@app.get("/settings", response_class=HTMLResponse)
-def settings():
-    return f"""
-    <html>
-    <head><title>NESAKO Settings</title></head>
-    <body style="font-family:sans-serif;padding:20px;">
-        <h2>⚙ NESAKO - Kodiranje aplikacije</h2>
-        <form method="post">
-            <label><b>Uputstvo ponašanja:</b></label><br>
-            <textarea name="nova_uputstva" rows="5" style="width:100%;">{core_instructions}</textarea><br><br>
+@app.get("/admin/violations")
+def list_violations():
+    return violations
 
-            <label><b>Dodatni kod (simulirano):</b></label><br>
-            <textarea name="dodatni_kod" rows="8" style="width:100%;font-family:monospace;">{dodatni_kod}</textarea><br><br>
+@app.get("/admin/users")
+def list_users():
+    return users
 
-            <button type="submit">💾 Dodaj kod i sačuvaj</button>
-        </form>
-        <br><a href="/">↩ Nazad na chat</a>
-    </body>
-    </html>
-    """
-
-@app.post("/settings", response_class=HTMLResponse)
-async def update_settings(nova_uputstva: str = Form(...), dodatni_kod_: str = Form(...)):
-    global core_instructions, dodatni_kod, istorija_poruka
-    core_instructions = nova_uputstva.strip()
-    dodatni_kod = dodatni_kod_.strip()
-    istorija_poruka = []
-    return RedirectResponse("/", status_code=303)
-
-def prikazi_chat():
-    poruke_html = ""
-    for poruka in istorija_poruka:
-        if poruka["role"] == "user":
-            poruke_html += f'<div class="bubble user">🧑‍💬 {poruka["content"]}</div>'
-        elif poruka["role"] == "assistant":
-            poruke_html += f'<div class="bubble bot">🤖 {poruka["content"]}</div>'
-
-    return f"""
-    <html>
-    <head>
-        <title>NESAKO Chat</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; background-color: #f2f2f2; margin: 0; }}
-            .topbar {{
-                background-color: #333; color: white; padding: 10px 20px;
-                display: flex; justify-content: space-between; align-items: center;
-            }}
-            .chatbox {{ max-width: 700px; margin: auto; background: white; padding: 20px; border-radius: 10px; margin-top: 10px; }}
-            .bubble {{ padding: 10px 15px; margin: 10px 0; border-radius: 15px; max-width: 80%; }}
-            .user {{ background: #d1e7dd; text-align: left; border-top-left-radius: 0; }}
-            .bot {{ background: #f8d7da; text-align: left; border-top-right-radius: 0; }}
-            form {{ margin-top: 20px; }}
-            input[type=text] {{ width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; }}
-            button {{ padding: 10px 20px; font-size: 16px; background-color: #333; color: white; border: none; border-radius: 5px; margin-top: 10px; }}
-            button:hover {{ background-color: #555; }}
-        </style>
-        <script>
-            window.onload = function() {{
-                window.scrollTo(0, document.body.scrollHeight);
-            }};
-        </script>
-    </head>
-    <body>
-        <div class="topbar">
-            <div><b>NESAKO Chat</b></div>
-            <div><a href="/settings" style="color:white;text-decoration:none;">⚙ Podešavanja</a></div>
-        </div>
-        <div class="chatbox">
-            {poruke_html}
-            <form method="post">
-                <input type="text" name="pitanje" placeholder="Unesi novo pitanje..." required />
-                <button type="submit">Pošalji</button>
-            </form>
-        </div>
-    </body>
-    </html>
-    """
+@app.post("/admin/block")
+def block_user(user_id: int):
+    for u in users:
+        if u.id == user_id:
+            u.is_blocked = True
+            return {"status": "blocked"}
+    raise HTTPException(status_code=404, detail="User not found")
