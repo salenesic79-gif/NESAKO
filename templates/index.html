@@ -1,10 +1,38 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>TovarTaxi by NESAKO</title>
-</head>
-<body>
-    <h1>Dobrodošli u TovarTaxi</h1>
-    <p>Ova aplikacija funkcioniše!</p>
-</body>
-</html>
+<div id="chat-container">
+    <div id="chat-messages"></div>
+    <input type="text" id="user-input" placeholder="Unesite pitanje...">
+    <button onclick="sendMessage()">Pošalji</button>
+</div>
+
+<script>
+async function sendMessage() {
+    const userInput = document.getElementById('user-input').value;
+    
+    try {
+        const response = await fetch('/api/chat/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify({ instruction: userInput })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Prikazivanje odgovora
+            displayMessage(data.response, 'ai');
+        } else {
+            console.error('Error:', data.error);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+function getCSRFToken() {
+    // Funkcija za dobijanje CSRF tokena
+    return document.querySelector('[name=csrfmiddlewaretoken]').value;
+}
+</script>
