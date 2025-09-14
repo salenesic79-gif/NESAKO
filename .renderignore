@@ -1,0 +1,6 @@
+manage.py
+manage_backup.py
+*.sqlite3
+__pycache__/
+*.pyc
+.env

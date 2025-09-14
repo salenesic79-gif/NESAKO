@@ -1,38 +1,1455 @@
-<div id="chat-container">
-    <div id="chat-messages"></div>
-    <input type="text" id="user-input" placeholder="Unesite pitanje...">
-    <button onclick="sendMessage()">Pošalji</button>
-</div>
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NESAKO AI Asistent</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 1200px;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .header-center {
+            flex: 1;
+            text-align: center;
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .chat-stats {
+            font-size: 12px;
+            opacity: 0.8;
+            text-align: right;
+        }
+        
+        .history-dropdown {
+            position: relative;
+        }
+        
+        .history-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+        
+        .history-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .history-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            min-width: 300px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .history-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .history-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .history-item:last-child {
+            border-bottom: none;
+        }
+        
+        .history-title {
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        
+        .history-preview {
+            color: #666;
+            font-size: 11px;
+            line-height: 1.3;
+        }
+        
+        .history-time {
+            color: #999;
+            font-size: 10px;
+            margin-top: 4px;
+        }
+        
+        .status-bar {
+            background: #f8f9fa;
+            padding: 8px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .status-indicator.working {
+            background: #ffc107;
+            animation: spin 1s linear infinite;
+        }
+        
+        .status-indicator.security {
+            background: #dc3545;
+            animation: pulse 1s infinite;
+        }
+        
+        .status-indicator.planning {
+            background: #17a2b8;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .security-warning {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 15px 20px;
+            border-left: 5px solid #fff;
+            animation: securityPulse 2s infinite;
+        }
+        
+        @keyframes securityPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            50% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+        }
+        
+        .plan-approval {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 15px 20px;
+            border-left: 5px solid #fff;
+        }
+        
+        .plan-steps {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            white-space: pre-line;
+        }
+        
+        .progress-tracker {
+            background: #f8f9fa;
+            border: 2px solid #28a745;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 20px;
+            display: none;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            border-radius: 10px;
+            transition: width 0.3s ease;
+            position: relative;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: progressShine 2s infinite;
+        }
+        
+        @keyframes progressShine {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .action-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .btn-approve {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-approve:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+        
+        .btn-cancel {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-cancel:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+        
+        .btn-rollback {
+            background: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-rollback:hover {
+            background: #e0a800;
+            transform: translateY(-2px);
+        }
+        
+        .learning-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .message {
+            margin-bottom: 20px;
+            padding: 18px;
+            border-radius: 18px;
+            max-width: 85%;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            position: relative;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .user-message {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .ai-message {
+            background: white;
+            color: #333;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .message-meta {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 10px;
+            text-align: right;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .ai-message .message-meta {
+            text-align: left;
+        }
+        
+        .typing-animation {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #667eea;
+            animation: typing 1.4s infinite;
+        }
+        
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-style: italic;
+            background: #f0f0f0;
+            margin: 10px 20px;
+            border-radius: 15px;
+        }
+        
+        .input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0f0;
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+        }
+        
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+        
+        #user-input {
+            width: 100%;
+            min-height: 60px;
+            max-height: 200px;
+            padding: 18px;
+            border: 2px solid #e0e0f0;
+            border-radius: 25px;
+            font-size: 16px;
+            resize: vertical;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.3s;
+            line-height: 1.4;
+        }
+        
+        #user-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .char-counter {
+            position: absolute;
+            bottom: -25px;
+            right: 15px;
+            font-size: 12px;
+            color: #666;
+            transition: color 0.3s;
+        }
+        
+        .char-counter.warning {
+            color: #ff6b35;
+        }
+        
+        .char-counter.danger {
+            color: #e74c3c;
+        }
+        
+        .input-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        #send-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        #send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .conversation-flow {
+            padding: 12px 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0f0;
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .flow-indicator {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        
+        .flow-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ddd;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .flow-dot.active {
+            background: #667eea;
+            transform: scale(1.2);
+        }
+        
+        .flow-dot.completed {
+            background: #28a745;
+        }
+        
+        .flow-progress {
+            font-size: 11px;
+            color: #999;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                height: 100vh;
+                max-width: 100%;
+                border-radius: 0;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 10px;
+                padding: 15px;
+            }
+            
+            .header-left, .header-right {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .header h1 {
+                font-size: 20px;
+            }
+            
+            #chat-messages {
+                padding: 15px;
+            }
+            
+            .input-container {
+                padding: 15px;
+            }
+            
+            .message {
+                max-width: 95%;
+            }
+            
+            .flow-indicator {
+                gap: 4px;
+            }
+            
+            .flow-dot {
+                width: 8px;
+                height: 8px;
+            }
+        }
+        
+        .quick-access-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+        
+        .quick-access-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <div class="chat-stats">
+                    <div id="message-count">Poruke: 1</div>
+                    <div id="session-time">Vreme: 0m</div>
+                </div>
+            </div>
+            
+            <div class="header-center">
+                <h1>🤖 NESAKO AI</h1>
+                <p>Definitivni Asistent - GitHub Enabled</p>
+            </div>
+            
+            <div class="header-right">
+                <div class="history-dropdown">
+                    <button class="history-btn" onclick="toggleHistory()">
+                        📋 Istorija
+                    </button>
+                    <div class="history-menu" id="history-menu">
+                        <div class="history-item" onclick="loadHistorySession(0)">
+                            <div class="history-title">Početna sesija</div>
+                            <div class="history-preview">Dobrodošli u NESAKO AI...</div>
+                            <div class="history-time">Upravo</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-buttons">
+                    <button id="quick-access-btn" class="quick-access-btn" onclick="quickAccess()" title="Brzi pristup">
+                        🚀 Brzi pristup
+                    </button>
+                    <button class="history-btn" onclick="logout()" style="background: rgba(220,53,69,0.2); margin-left: 10px;">
+                        🚪 Izloguj se
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-left">
+                <span class="status-indicator" id="statusIndicator">●</span>
+                <span class="status-text" id="statusText">Spreman za rad</span>
+            </div>
+            <div class="status-right">
+                <span class="learning-indicator" id="learningIndicator">🧠 Učim...</span>
+                <span class="memory-stats" id="memoryStats">Memorija: 0 chat-ova</span>
+            </div>
+        </div>
+        
+        <!-- Security Warning Component -->
+        <div class="security-warning" id="security-warning" style="display: none;">
+            <h3>🚨 SIGURNOSNO UPOZORENJE</h3>
+            <div id="security-message"></div>
+            <div class="action-buttons">
+                <button class="action-btn btn-approve" onclick="confirmSecurity()">Da, nastavi</button>
+                <button class="action-btn btn-cancel" onclick="cancelSecurity()">Otkaži</button>
+            </div>
+        </div>
+        
+        <!-- Plan Approval Component -->
+        <div class="plan-approval" id="plan-approval" style="display: none;">
+            <h3>📋 PLAN RADA</h3>
+            <div class="plan-steps" id="plan-steps"></div>
+            <div class="action-buttons">
+                <button class="action-btn btn-approve" onclick="approvePlan()">Odobri plan</button>
+                <button class="action-btn btn-cancel" onclick="rejectPlan()">Izmeni plan</button>
+                <button class="action-btn btn-rollback" onclick="showRollbackOptions()">GitHub Rollback</button>
+            </div>
+        </div>
+        
+        <!-- Progress Tracker Component -->
+        <div class="progress-tracker" id="progress-tracker">
+            <h3>⏳ ZADATAK U TOKU</h3>
+            <div id="task-description">Izvršavam kompleksan zadatak...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+            <div id="progress-text">0% završeno</div>
+            <div class="action-buttons">
+                <button class="action-btn btn-cancel" onclick="cancelTask()">Prekini zadatak</button>
+            </div>
+        </div>
+        
+        <div id="chat-messages">
+            <div class="message ai-message">
+                Zdravo! Ja sam NESAKO AI - definitivni asistent sa pristupom GitHub repozitorijumima. Mogu da:
+                
+                🔧 Analiziram i menjam kod iz vaših GitHub projekata
+                💻 Izvršavam kod u sandbox okruženju  
+                🌐 Pretražujem web za najnovije informacije
+                📊 Analiziram podatke i kreiram rešenja
+                ⚽ Preuzimam sportske statistike
+                
+                Kako mogu da vam pomognem danas?
+                <div class="message-meta">
+                    <span>AI • Definitivni Asistent</span>
+                    <span>Sada</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="conversation-flow">
+            <div class="flow-indicator">
+                <span>Flow:</span>
+                <div class="flow-dot active" title="Korak 1"></div>
+                <div class="flow-dot" title="Korak 2"></div>
+                <div class="flow-dot" title="Korak 3"></div>
+                <div class="flow-dot" title="Korak 4"></div>
+                <div class="flow-dot" title="Korak 5"></div>
+                <div class="flow-dot" title="Korak 6"></div>
+                <div class="flow-dot" title="Korak 7"></div>
+                <div class="flow-dot" title="Korak 8"></div>
+                <div class="flow-dot" title="Korak 9"></div>
+                <div class="flow-dot" title="Korak 10"></div>
+            </div>
+            <div id="typing-indicator" style="display: none;">
+                <div class="typing-animation">
+                    AI piše
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div>🧠 AI analizira zahtev i priprema odgovor...</div>
+        </div>
+        
+        <div class="input-container">
+            <div class="input-wrapper">
+                <textarea 
+                    id="user-input" 
+                    placeholder="Unesite vaš zahtev... (do 50,000 karaktera)
+                    
+Možete koristiti:
+• GitHub URL za analizu koda
+• JSON tool pozive: {'tool': 'get_github_content', 'repo_url': 'https://github.com/user/repo'}
+• Shift+Enter za novi red, Enter za slanje" 
+                    maxlength="50000" 
+                    rows="1"
+                ></textarea>
+                <div class="char-counter" id="char-counter">0/50,000</div>
+            </div>
+            <div class="input-actions">
+                <button id="send-btn" onclick="sendMessage()" title="Pošalji poruku (Enter)">
+                    ➤
+                </button>
+            </div>
+        </div>
+    </div>
 
-<script>
-async function sendMessage() {
-    const userInput = document.getElementById('user-input').value;
-    
-    try {
-        const response = await fetch('/api/chat/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCSRFToken()
-            },
-            body: JSON.stringify({ instruction: userInput })
+    <script>
+        let messageCount = 1;
+        let sessionStartTime = Date.now();
+        let conversationHistory = [];
+        let currentFlowStep = 0;
+        let chatSessions = [];
+        let currentSessionId = 0;
+        let isTyping = false;
+        let currentChatId = `chat_${Date.now()}`;
+        let learningProfile = "Novi korisnik - početak učenja";
+        let currentTaskId = null;
+        let securityPending = false;
+        
+        // Initialize chat sessions
+        function initializeSessions() {
+            chatSessions = [
+                {
+                    id: 0,
+                    title: "Početna sesija",
+                    messages: [...conversationHistory],
+                    timestamp: new Date(),
+                    preview: "Dobrodošli u NESAKO AI..."
+                }
+            ];
+        }
+        
+        // Update session stats
+        function updateStats() {
+            const elapsed = Math.floor((Date.now() - sessionStartTime) / 60000);
+            document.getElementById('message-count').textContent = `Poruke: ${messageCount}`;
+            document.getElementById('session-time').textContent = `Vreme: ${elapsed}m`;
+        }
+        
+        // Update flow indicator
+        function updateFlowIndicator() {
+            const dots = document.querySelectorAll('.flow-dot');
+            
+            dots.forEach((dot, index) => {
+                dot.classList.remove('active', 'completed');
+                if (index < currentFlowStep) {
+                    dot.classList.add('completed');
+                } else if (index === currentFlowStep) {
+                    dot.classList.add('active');
+                }
+            });
+            
+            currentFlowStep = (currentFlowStep + 1) % 10;
+        }
+        
+        // Update status
+        function updateStatus(text, isWorking = false) {
+            const statusText = document.getElementById('statusText');
+            const statusIndicator = document.getElementById('statusIndicator');
+            
+            statusText.textContent = text;
+            statusIndicator.className = isWorking ? 'status-indicator working' : 'status-indicator';
+        }
+        
+        // Auto-resize textarea
+        function autoResize() {
+            const textarea = document.getElementById('user-input');
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+        }
+        
+        // Update character counter
+        function updateCharCounter() {
+            const input = document.getElementById('user-input');
+            const counter = document.getElementById('char-counter');
+            const length = input.value.length;
+            
+            counter.textContent = `${length.toLocaleString()}/50,000`;
+            
+            counter.className = 'char-counter';
+            if (length > 45000) counter.classList.add('danger');
+            else if (length > 40000) counter.classList.add('warning');
+        }
+        
+        // Format timestamp
+        function formatTime(date) {
+            return date.toLocaleTimeString('sr-RS', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+        }
+        
+        // Toggle history menu
+        function toggleHistory() {
+            const menu = document.getElementById('history-menu');
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+            updateHistoryMenu();
+        }
+        
+        // Update history menu
+        function updateHistoryMenu() {
+            const menu = document.getElementById('history-menu');
+            menu.innerHTML = '';
+            
+            chatSessions.slice(0, 10).forEach((session, index) => {
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                item.onclick = () => loadHistorySession(session.id);
+                
+                item.innerHTML = `
+                    <div class="history-title">${session.title}</div>
+                    <div class="history-preview">${session.preview}</div>
+                    <div class="history-time">${formatTime(session.timestamp)}</div>
+                `;
+                
+                menu.appendChild(item);
+            });
+        }
+        
+        // Load history session
+        function loadHistorySession(sessionId) {
+            const session = chatSessions.find(s => s.id === sessionId);
+            if (session) {
+                conversationHistory = [...session.messages];
+                currentSessionId = sessionId;
+                
+                // Reload messages
+                const messagesContainer = document.getElementById('chat-messages');
+                messagesContainer.innerHTML = '';
+                
+                conversationHistory.forEach(msg => {
+                    addMessageToDOM(msg.content, msg.isUser, msg.metadata);
+                });
+                
+                document.getElementById('history-menu').style.display = 'none';
+            }
+        }
+        
+        // Create new session
+        function createNewSession(firstMessage) {
+            const newSessionId = Date.now();
+            const preview = firstMessage.length > 50 ? firstMessage.substring(0, 50) + '...' : firstMessage;
+            
+            chatSessions.unshift({
+                id: newSessionId,
+                title: `Sesija ${chatSessions.length + 1}`,
+                messages: [],
+                timestamp: new Date(),
+                preview: preview
+            });
+            
+            currentSessionId = newSessionId;
+            conversationHistory = [];
+        }
+        
+        // CSRF Token handling
+        function getCSRFToken() {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, 19) === 'nesako_ai_csrftoken=') {
+                        cookieValue = decodeURIComponent(cookie.substring(19));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function addMessageToDOM(content, isUser = false, metadata = {}) {
+            const messagesContainer = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            const timestamp = new Date();
+            
+            messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+            
+            let metaInfo = isUser ? 'Vi' : 'AI';
+            if (metadata.mode) metaInfo += ` • ${metadata.mode}`;
+            if (metadata.tools_used) metaInfo += ' • Tools';
+            if (metadata.context_aware) metaInfo += ' • Context';
+            
+            messageDiv.innerHTML = `
+                ${content}
+                <div class="message-meta">
+                    <span>${metaInfo}</span>
+                    <span>${formatTime(timestamp)}</span>
+                </div>
+            `;
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function addMessage(content, isUser = false, metadata = {}) {
+            const timestamp = new Date();
+            
+            addMessageToDOM(content, isUser, metadata);
+            
+            // Add to conversation history
+            const messageData = {
+                content,
+                isUser,
+                timestamp,
+                metadata
+            };
+            
+            conversationHistory.push(messageData);
+            
+            // Update current session
+            const currentSession = chatSessions.find(s => s.id === currentSessionId);
+            if (currentSession) {
+                currentSession.messages = [...conversationHistory];
+                if (isUser && currentSession.messages.length === 1) {
+                    // Update preview for first user message
+                    currentSession.preview = content.length > 50 ? content.substring(0, 50) + '...' : content;
+                }
+            }
+            
+            messageCount++;
+            updateStats();
+            updateFlowIndicator();
+        }
+
+        // Simulate typing effect
+        function simulateTyping(text, callback) {
+            const typingIndicator = document.getElementById('typing-indicator');
+            typingIndicator.style.display = 'block';
+            
+            let index = 0;
+            const speed = Math.max(20, Math.min(100, 3000 / text.length)); // Adaptive speed
+            
+            const tempDiv = document.createElement('div');
+            tempDiv.className = 'message ai-message';
+            tempDiv.style.opacity = '0.7';
+            document.getElementById('chat-messages').appendChild(tempDiv);
+            
+            function typeChar() {
+                if (index < text.length) {
+                    tempDiv.textContent = text.substring(0, index + 1) + '▋';
+                    index++;
+                    setTimeout(typeChar, speed);
+                } else {
+                    tempDiv.remove();
+                    typingIndicator.style.display = 'none';
+                    callback();
+                }
+            }
+            
+            setTimeout(typeChar, 500);
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('user-input');
+            const message = input.value.trim();
+            
+            if (!message || isTyping || securityPending) return;
+            
+            const sendBtn = document.getElementById('send-btn');
+            const loading = document.getElementById('loading');
+            
+            // Create new session if this is first message and we have content
+            if (conversationHistory.length === 0) {
+                createNewSession(message);
+            }
+            
+            // Disable input and show loading
+            input.disabled = true;
+            sendBtn.disabled = true;
+            loading.style.display = 'block';
+            isTyping = true;
+            
+            updateStatus('Obrađujem zahtev...', true);
+            
+            // Add user message
+            addMessage(message, true);
+            input.value = '';
+            updateCharCounter();
+            autoResize();
+            
+            // Send to API
+            fetch('/api/chat/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    instruction: message,
+                    conversation_history: conversationHistory.slice(-20),
+                    task_id: currentTaskId,
+                    chat_id: currentChatId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                handleApiResponse(data);
+            })
+            .catch(error => {
+                loading.style.display = 'none';
+                addMessage(`Greška u komunikaciji: ${error.message}`, false, { mode: 'error' });
+                updateStatus('Greška u komunikaciji', false);
+                isTyping = false;
+            })
+            .finally(() => {
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.focus();
+            });
+        }
+
+        // Security warning functions
+        function showSecurityWarning(message) {
+            const warningDiv = document.getElementById('security-warning');
+            const messageDiv = document.getElementById('security-message');
+            
+            messageDiv.textContent = message;
+            warningDiv.style.display = 'block';
+            securityPending = true;
+            
+            updateStatus('Čeka potvrdu bezbednosti', true);
+            document.getElementById('statusIndicator').className = 'status-indicator security';
+        }
+        
+        function confirmSecurity() {
+            document.getElementById('security-warning').style.display = 'none';
+            securityPending = false;
+            updateStatus('Nastavljam sa zadatkom...', true);
+            
+            // Resend original message with security confirmation
+            const lastMessage = conversationHistory[conversationHistory.length - 1];
+            if (lastMessage && lastMessage.isUser) {
+                sendMessageWithConfirmation(lastMessage.content, 'security_confirmed');
+            }
+        }
+        
+        function cancelSecurity() {
+            document.getElementById('security-warning').style.display = 'none';
+            securityPending = false;
+            updateStatus('Zadatak otkazan zbog bezbednosti', false);
+            
+            addMessage("Zadatak je otkazan zbog sigurnosnih razloga. Molim vas reformulišite zahtev.", false, { mode: 'security' });
+        }
+        
+        // Plan approval functions
+        function showPlanApproval(plan) {
+            const planDiv = document.getElementById('plan-approval');
+            const stepsDiv = document.getElementById('plan-steps');
+            
+            stepsDiv.textContent = plan;
+            planDiv.style.display = 'block';
+            currentPlan = plan;
+            
+            updateStatus('Čeka odobrenje plana', false);
+            document.getElementById('statusIndicator').className = 'status-indicator planning';
+        }
+        
+        function approvePlan() {
+            document.getElementById('plan-approval').style.display = 'none';
+            updateStatus('Izvršavam plan...', true);
+            
+            // Start plan execution
+            sendMessageWithConfirmation('da', 'plan_approved');
+        }
+        
+        function rejectPlan() {
+            document.getElementById('plan-approval').style.display = 'none';
+            updateStatus('Plan odbačen', false);
+            
+            const modification = prompt("Kako želite da modifikujem plan?");
+            if (modification) {
+                sendMessageWithConfirmation(`Izmeni plan: ${modification}`, 'plan_modified');
+            }
+        }
+        
+        function showRollbackOptions() {
+            const repoUrl = prompt("Unesite GitHub URL repozitorijuma:");
+            if (repoUrl) {
+                const steps = prompt("Broj koraka nazad (default: 2):", "2");
+                sendMessageWithConfirmation(`{"tool": "github_rollback", "repo_url": "${repoUrl}", "steps_back": ${steps || 2}}`, 'rollback_requested');
+            }
+        }
+        
+        // Progress tracking functions
+        function showProgressTracker(taskId, description) {
+            const trackerDiv = document.getElementById('progress-tracker');
+            const descDiv = document.getElementById('task-description');
+            
+            descDiv.textContent = description || 'Izvršavam kompleksan zadatak...';
+            trackerDiv.style.display = 'block';
+            currentTaskId = taskId;
+            
+            // Disable progress polling to prevent 400 errors
+            // startProgressPolling();
+        }
+        
+        function updateProgress(progress) {
+            const fillDiv = document.getElementById('progress-fill');
+            const textDiv = document.getElementById('progress-text');
+            
+            fillDiv.style.width = `${progress}%`;
+            textDiv.textContent = `${progress}% završeno`;
+            
+            if (progress >= 100) {
+                setTimeout(() => {
+                    document.getElementById('progress-tracker').style.display = 'none';
+                    currentTaskId = null;
+                }, 2000);
+            }
+        }
+        
+        function startProgressPolling() {
+            if (!currentTaskId) return;
+            
+            const pollInterval = setInterval(() => {
+                if (!currentTaskId) {
+                    clearInterval(pollInterval);
+                    return;
+                }
+                
+                // Poll for progress
+                fetch('/api/chat/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        task_id: currentTaskId,
+                        instruction: '',
+                        conversation_history: []
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'progress') {
+                        updateProgress(data.progress);
+                    } else if (data.status === 'success' && data.task_completed) {
+                        updateProgress(100);
+                        addMessage(data.response, false, { mode: 'task_completed' });
+                        clearInterval(pollInterval);
+                    }
+                })
+                .catch(error => {
+                    console.error('Progress polling error:', error);
+                    clearInterval(pollInterval);
+                });
+            }, 2000);
+        }
+        
+        function cancelTask() {
+            if (currentTaskId) {
+                currentTaskId = null;
+                document.getElementById('progress-tracker').style.display = 'none';
+                updateStatus('Zadatak prekinut', false);
+                addMessage("Zadatak je prekinut na vaš zahtev.", false, { mode: 'cancelled' });
+            }
+        }
+        
+        // Enhanced send message with confirmation types
+        function sendMessageWithConfirmation(message, confirmationType) {
+            const input = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            const loading = document.getElementById('loading');
+            
+            input.disabled = true;
+            sendBtn.disabled = true;
+            loading.style.display = 'block';
+            isTyping = true;
+            
+            updateStatus('Obrađujem zahtev...', true);
+            
+            // Send to API with confirmation
+            fetch('/api/chat/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    instruction: message,
+                    conversation_history: conversationHistory.slice(-20),
+                    confirmation_type: confirmationType,
+                    task_id: currentTaskId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                handleApiResponse(data);
+            })
+            .catch(error => {
+                loading.style.display = 'none';
+                addMessage(`Greška u komunikaciji: ${error.message}`, false, { mode: 'error' });
+                updateStatus('Greška u komunikaciji', false);
+                isTyping = false;
+            })
+            .finally(() => {
+                input.disabled = false;
+                sendBtn.disabled = false;
+            });
+        }
+        
+        // Enhanced API response handler with authentication check
+        function handleApiResponse(data) {
+            console.log('=== API Response received ===', data);
+            
+            const loading = document.getElementById('loading');
+            loading.style.display = 'none';
+            
+            // Handle authentication errors
+            if (data.status === 'unauthorized') {
+                window.location.href = '/login/';
+                return;
+            }
+            
+            if (data.status === 'security_warning') {
+                showSecurityWarning(data.response);
+                return;
+            }
+            
+            if (data.status === 'plan_created') {
+                showPlanApproval(data.plan);
+                addMessage(data.response, false, { mode: 'planning' });
+                return;
+            }
+            
+            if (data.status === 'executing') {
+                showProgressTracker(data.task_id, data.response);
+                addMessage(data.response, false, { mode: 'executing' });
+                return;
+            }
+            
+            if (data.status === 'progress') {
+                updateProgress(data.progress);
+                return;
+            }
+            
+            if (data.status === 'success' || data.response) {
+                console.log('Adding AI response to chat:', data.response);
+                
+                // Direct message add - bypass typing simulation for now
+                addMessage(data.response, false, {
+                    mode: data.mode || 'standard',
+                    tools_used: data.tools_used || false,
+                    context_aware: data.context_aware || false
+                });
+                updateStatus('Spreman za rad', false);
+                isTyping = false;
+            } else {
+                console.log('Error response:', data.error);
+                addMessage(`Greška: ${data.error}`, false, { mode: 'error' });
+                updateStatus('Greška u obradi', false);
+                isTyping = false;
+            }
+        }
+        
+        // Logout function
+        function logout() {
+            if (confirm('Da li ste sigurni da se želite izlogovati?')) {
+                fetch('/logout/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCSRFToken()
+                    }
+                })
+                .then(() => {
+                    window.location.href = '/login/';
+                })
+                .catch(() => {
+                    window.location.href = '/login/';
+                });
+            }
+        }
+        
+        // Quick access function
+        async function quickAccess() {
+            const quickBtn = document.getElementById('quick-access-btn');
+            quickBtn.innerHTML = '⏳ Pristupam...';
+            quickBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/login/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: 'nesako',
+                        password: 'nesako2024'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    quickBtn.innerHTML = '✅ Uspešno!';
+                    setTimeout(() => {
+                        quickBtn.innerHTML = '🚀 Brzi pristup';
+                        quickBtn.disabled = false;
+                    }, 2000);
+                    
+                    // Show success message
+                    showNotification('🎉 Uspešno ste se ulogovali!', 'success');
+                } else {
+                    quickBtn.innerHTML = '❌ Greška';
+                    setTimeout(() => {
+                        quickBtn.innerHTML = '🚀 Brzi pristup';
+                        quickBtn.disabled = false;
+                    }, 2000);
+                    
+                    showNotification('❌ ' + data.error, 'error');
+                }
+            } catch (error) {
+                quickBtn.innerHTML = '❌ Greška';
+                setTimeout(() => {
+                    quickBtn.innerHTML = '🚀 Brzi pristup';
+                    quickBtn.disabled = false;
+                }, 2000);
+                
+                showNotification('❌ Greška pri pristupu', 'error');
+            }
+        }
+
+        // Show notification function
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 8px;
+                color: white;
+                font-weight: bold;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+                background: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#007bff'};
+            `;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+        
+        function updateLearningIndicator(profile) {
+            const indicator = document.getElementById('learningIndicator');
+            if (profile && profile !== "Novi korisnik - početak učenja") {
+                indicator.textContent = `🧠 ${profile}`;
+                indicator.style.color = '#4CAF50';
+            } else {
+                indicator.textContent = '🧠 Učim preferencije...';
+                indicator.style.color = '#FF9800';
+            }
+        }
+        
+        function updateMemoryStats(stats) {
+            const memoryElement = document.getElementById('memoryStats');
+            if (stats) {
+                memoryElement.textContent = `💾 ${stats.total_chats} chat-ova (${stats.active_today} danas)`;
+                memoryElement.style.color = stats.total_chats > 0 ? '#4CAF50' : '#666';
+            }
+        }
+
+        // Event listeners
+        document.getElementById('user-input').addEventListener('input', function() {
+            updateCharCounter();
+            autoResize();
         });
         
-        const data = await response.json();
+        document.getElementById('user-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
         
-        if (data.status === 'success') {
-            // Prikazivanje odgovora
-            displayMessage(data.response, 'ai');
-        } else {
-            console.error('Error:', data.error);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-    }
-}
-
-function getCSRFToken() {
-    // Funkcija za dobijanje CSRF tokena
-    return document.querySelector('[name=csrfmiddlewaretoken]').value;
-}
-</script>
+        // Close history menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const historyDropdown = document.querySelector('.history-dropdown');
+            const historyMenu = document.getElementById('history-menu');
+            
+            if (!historyDropdown.contains(e.target)) {
+                historyMenu.style.display = 'none';
+            }
+        });
+        
+        // Initialize
+        initializeSessions();
+        updateStats();
+        updateCharCounter();
+        setInterval(updateStats, 30000); // Update every 30 seconds
+        
+        // Focus input on load
+        document.getElementById('user-input').focus();
+    </script>
+</body>
+</html>
