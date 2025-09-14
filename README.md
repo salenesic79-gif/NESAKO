@@ -1,10 +1,77 @@
-# NESAKO AI
-fastapi
-uvicorn
+# 🤖 NESAKO AI Assistant
 
-# 🤖 NESAKO AI - Nezavisni AI Asistent
+Napredni AI asistent sa GitHub integracijom, DeepSeek API-jem i real-time mogućnostima.
 
-NESAKO AI je potpuno nezavisna Django aplikacija sa AI asistentom koji koristi DeepSeek API. Aplikacija je optimizovana za mobilne uređaje i potpuno je odvojena od bilo koje druge aplikacije.
+## ✨ Funkcionalnosti
+
+- 🧠 **DeepSeek AI integracija** - Napredni chat asistent
+- 🔧 **GitHub analiza** - Pristup i analiza repozitorijuma
+- 🌐 **Web pretraga** - Real-time informacije
+- 💻 **Kod izvršavanje** - Sandbox okruženje
+- 📊 **Sportske statistike** - Predviđanja i analize
+- 🛡️ **Sigurnosni sistem** - Automatska detekcija pretnji
+
+## 🚀 Pokretanje
+
+1. **Instaliraj dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Pokreni server:**
+   ```bash
+   python main.py
+   ```
+
+3. **Otvori u browser:**
+   ```
+   http://localhost:8015
+   ```
+
+## 🔑 Login podaci
+
+- **Username:** nesako
+- **Password:** nesako2024
+
+## 🛠️ Tehnologije
+
+- **Backend:** Django 4.2.7
+- **Frontend:** HTML5, CSS3, JavaScript
+- **AI:** DeepSeek API
+- **Database:** SQLite
+- **Deployment:** Render ready
+
+## 📁 Struktura projekta
+
+```
+NESAKO/
+├── ai_assistant/          # Main app
+│   ├── views.py          # API endpoints
+│   └── __init__.py
+├── templates/            # HTML templates
+│   ├── index.html       # Main chat interface
+│   └── login.html       # Login page
+├── main.py              # Django entry point
+├── settings.py          # Django settings
+├── urls.py              # URL routing
+└── requirements.txt     # Dependencies
+```
+
+## 🔧 Konfiguracija
+
+Dodaj u `.env` fajl:
+```
+DEEPSEEK_API_KEY=your_api_key_here
+WEATHER_API_KEY=your_weather_key
+GITHUB_TOKEN=your_github_token
+```
+
+## 📝 Napomene
+
+- Aplikacija je optimizovana za production
+- Uključuje CSRF zaštitu
+- Automatski error handling
+- Debug mode za development
 
 ## 🌐 RENDER DEPLOYMENT - Pristup sa telefona preko interneta
 
