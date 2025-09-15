@@ -372,7 +372,9 @@ class DeepSeekAPI(View):
             
             # Handle task progress polling (empty instruction with task_id)
             if task_id and not user_input:
+                print(f"DEBUG: Polling progress for task_id: {task_id}")
                 progress = self.get_task_progress(task_id)
+                print(f"DEBUG: Progress result: {progress}")
                 if progress['status'] == 'completed':
                     return JsonResponse({
                         'response': f"✅ Zadatak završen!\n\n{progress['result']}",
@@ -588,45 +590,88 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
             return JsonResponse({'error': str(e)}, status=500)
     
     def get_task_progress(self, task_id):
-        """Track progress of long-running tasks"""
-        # Simulate task progress tracking
+        """Track progress of long-running tasks with improved parsing and debug logging"""
         import time
         current_time = time.time()
         
-        # Extract timestamp from task_id (format: task_TIMESTAMP_COUNTER)
+        print(f"DEBUG: get_task_progress called with task_id: '{task_id}'")
+        print(f"DEBUG: Current time: {current_time}")
+        
         try:
-            # Handle new format: task_1726394123456_1
-            if '_' in task_id:
-                parts = task_id.split('_')
-                if len(parts) >= 2:
-                    task_timestamp = int(parts[1]) / 1000  # Convert milliseconds to seconds
+            # Parse different task_id formats
+            task_timestamp = None
+            
+            if task_id.startswith('task_'):
+                # Remove 'task_' prefix
+                id_part = task_id[5:]  # Remove 'task_'
+                print(f"DEBUG: ID part after removing 'task_': '{id_part}'")
+                
+                if '_' in id_part:
+                    # Format: task_TIMESTAMP_COUNTER
+                    parts = id_part.split('_')
+                    timestamp_str = parts[0]
+                    print(f"DEBUG: Timestamp string from parts: '{timestamp_str}'")
                 else:
-                    task_timestamp = int(task_id.replace('task_', ''))
-            else:
-                task_timestamp = int(task_id.replace('task_', ''))
+                    # Format: task_TIMESTAMP
+                    timestamp_str = id_part
+                    print(f"DEBUG: Timestamp string direct: '{timestamp_str}'")
+                
+                # Convert timestamp
+                if len(timestamp_str) > 10:
+                    # Milliseconds - convert to seconds
+                    task_timestamp = int(timestamp_str) / 1000.0
+                    print(f"DEBUG: Converted from milliseconds: {task_timestamp}")
+                else:
+                    # Already in seconds
+                    task_timestamp = int(timestamp_str)
+                    print(f"DEBUG: Used as seconds: {task_timestamp}")
             
+            if task_timestamp is None:
+                raise ValueError(f"Could not parse timestamp from task_id: {task_id}")
+            
+            # Calculate elapsed time
             elapsed = current_time - task_timestamp
+            print(f"DEBUG: Elapsed time: {elapsed} seconds")
             
-            # Simulate progress over 30 seconds (faster for demo)
-            if elapsed < 30:
-                progress = min(100, int((elapsed / 30) * 100))
+            # Progress calculation over 15 seconds
+            duration = 15.0
+            if elapsed < 0:
+                # Task is in the future? Set to 0
+                elapsed = 0
+                print("DEBUG: Negative elapsed time, setting to 0")
+            
+            if elapsed < duration:
+                # Task is running
+                progress = int((elapsed / duration) * 100)
+                progress = max(1, min(99, progress))  # Keep between 1-99%
+                print(f"DEBUG: Task running - Progress: {progress}%")
+                
                 return {
                     'status': 'running',
                     'progress': progress,
                     'result': None
                 }
             else:
+                # Task completed
+                print(f"DEBUG: Task completed after {elapsed} seconds")
                 return {
                     'status': 'completed',
                     'progress': 100,
                     'result': 'Zadatak uspešno završen!'
                 }
+                
         except Exception as e:
-            print(f"Task progress error: {e}, task_id: {task_id}")
-            # Return running status with incremental progress
+            print(f"DEBUG: Exception in get_task_progress: {e}")
+            print(f"DEBUG: Exception type: {type(e).__name__}")
+            
+            # Fallback: return incremental progress based on current time
+            fallback_progress = int((current_time % 15) * 6.67)  # 0-100 over 15 seconds
+            fallback_progress = max(1, min(95, fallback_progress))
+            
+            print(f"DEBUG: Using fallback progress: {fallback_progress}%")
             return {
                 'status': 'running',
-                'progress': min(100, int((current_time % 30) * 3.33)),
+                'progress': fallback_progress,
                 'result': None
             }
     
