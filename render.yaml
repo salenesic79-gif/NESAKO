@@ -1,1 +1,13 @@
-# Ovaj fajl je obrisan - koristiti Procfile umesto render.yaml
+services:
+  - type: web
+    name: nesako-ai
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
