@@ -593,14 +593,23 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
         import time
         current_time = time.time()
         
-        # Extract timestamp from task_id
+        # Extract timestamp from task_id (format: task_TIMESTAMP_COUNTER)
         try:
-            task_timestamp = int(task_id.replace('task_', ''))
+            # Handle new format: task_1726394123456_1
+            if '_' in task_id:
+                parts = task_id.split('_')
+                if len(parts) >= 2:
+                    task_timestamp = int(parts[1]) / 1000  # Convert milliseconds to seconds
+                else:
+                    task_timestamp = int(task_id.replace('task_', ''))
+            else:
+                task_timestamp = int(task_id.replace('task_', ''))
+            
             elapsed = current_time - task_timestamp
             
-            # Simulate progress over 60 seconds
-            if elapsed < 60:
-                progress = min(100, int((elapsed / 60) * 100))
+            # Simulate progress over 30 seconds (faster for demo)
+            if elapsed < 30:
+                progress = min(100, int((elapsed / 30) * 100))
                 return {
                     'status': 'running',
                     'progress': progress,
@@ -612,11 +621,13 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
                     'progress': 100,
                     'result': 'Zadatak uspešno završen!'
                 }
-        except:
+        except Exception as e:
+            print(f"Task progress error: {e}, task_id: {task_id}")
+            # Return running status with incremental progress
             return {
-                'status': 'completed',
-                'progress': 100,
-                'result': 'Zadatak završen.'
+                'status': 'running',
+                'progress': min(100, int((current_time % 30) * 3.33)),
+                'result': None
             }
     
     def detect_critical_threats(self, user_input):
