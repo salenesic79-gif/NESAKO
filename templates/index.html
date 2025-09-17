@@ -868,6 +868,9 @@ Možete koristiti:
         let learningProfile = "Novi korisnik - početak učenja";
         let currentTaskId = null;
         let securityPending = false;
+        // User preferences
+        let autoOpenTaskPanel = false; // do not auto-open task panel
+        let enableComplexTasks = false; // temporarily disable complex flow to stabilize UX
         
         // Initialize chat sessions
         function initializeSessions() {
@@ -1073,6 +1076,22 @@ Možete koristiti:
             messageCount++;
             updateStats();
             updateFlowIndicator();
+
+            // Persist chat state to localStorage so chat is not cleared on heavy tasks or refresh
+            try {
+                const state = {
+                    conversationHistory,
+                    chatSessions,
+                    currentSessionId,
+                    messageCount,
+                    sessionStartTime,
+                    autoOpenTaskPanel,
+                    enableComplexTasks
+                };
+                localStorage.setItem('nesako_chat_state', JSON.stringify(state));
+            } catch (e) {
+                console.warn('LocalStorage save failed:', e);
+            }
         }
 
         // Simulate typing effect
@@ -1594,21 +1613,73 @@ Možete koristiti:
         
         generateTaskItems();
         
-        // PWA Service Worker Registration
+        // PWA Service Worker (disabled to prevent cache of old JS)
+        const ENABLE_PWA = false;
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/static/sw.js')
-                    .then(function(registration) {
-                        console.log('ServiceWorker registration successful');
-                    }, function(err) {
-                        console.log('ServiceWorker registration failed: ', err);
-                    });
+                if (ENABLE_PWA) {
+                    navigator.serviceWorker.register('/static/sw.js')
+                        .then(() => console.log('ServiceWorker registration successful'))
+                        .catch(err => console.log('ServiceWorker registration failed: ', err));
+                } else {
+                    // Unregister existing service workers to avoid stale cached assets
+                    navigator.serviceWorker.getRegistrations()
+                        .then(registrations => {
+                            if (registrations && registrations.length > 0) {
+                                Promise.all(registrations.map(r => r.unregister()))
+                                    .then(() => {
+                                        console.log('Service workers unregistered');
+                                    });
+                            }
+                        })
+                        .catch(() => {});
+                }
             });
         }
         
         // Task Management System
         let activeTasks = new Map();
         let taskIdCounter = 1;
+        
+        // Restore chat state from localStorage on load
+        (function restoreChatState() {
+            try {
+                const raw = localStorage.getItem('nesako_chat_state');
+                if (!raw) return;
+                const saved = JSON.parse(raw);
+                if (!saved) return;
+                
+                conversationHistory = Array.isArray(saved.conversationHistory) ? saved.conversationHistory : [];
+                chatSessions = Array.isArray(saved.chatSessions) ? saved.chatSessions : [];
+                currentSessionId = typeof saved.currentSessionId !== 'undefined' ? saved.currentSessionId : currentSessionId;
+                messageCount = typeof saved.messageCount === 'number' ? saved.messageCount : messageCount;
+                sessionStartTime = typeof saved.sessionStartTime === 'number' ? saved.sessionStartTime : sessionStartTime;
+                
+                // If nothing was saved, initialize default sessions
+                if (chatSessions.length === 0) {
+                    initializeSessions && initializeSessions();
+                }
+                
+                // Re-render messages
+                const messagesContainer = document.getElementById('chat-messages');
+                if (messagesContainer && conversationHistory.length > 0) {
+                    messagesContainer.innerHTML = '';
+                    conversationHistory.forEach(msg => {
+                        addMessageToDOM(msg.content, !!msg.isUser, msg.metadata || {});
+                    });
+                }
+                
+                // Restore preferences if present
+                if (typeof saved.autoOpenTaskPanel === 'boolean') autoOpenTaskPanel = saved.autoOpenTaskPanel;
+                if (typeof saved.enableComplexTasks === 'boolean') enableComplexTasks = saved.enableComplexTasks;
+
+                // Update UI stats
+                updateStats();
+                updateHistoryMenu && updateHistoryMenu();
+            } catch (e) {
+                console.warn('LocalStorage restore failed:', e);
+            }
+        })();
         
         // Create new task
         function createTask(taskName, instruction) {
@@ -1670,7 +1741,7 @@ Možete koristiti:
                     updateTaskPanel();
                     
                     // Add result to chat
-                    addMessage('ai', data.response);
+                    addMessage(data.response, false);
                     
                     // Remove completed task after 5 seconds
                     setTimeout(() => {
@@ -1730,7 +1801,7 @@ Možete koristiti:
                     updateTaskPanel();
                     
                     // Add result to chat
-                    addMessage('ai', data.response);
+                    addMessage(data.response, false);
                     
                     // Remove completed task after 5 seconds
                     setTimeout(() => {
@@ -1819,20 +1890,28 @@ Možete koristiti:
             const complexKeywords = ['kreiraj', 'napravi', 'build', 'create', 'develop', 'implementiraj', 'aplikacija', 'app', 'website', 'web', 'sistem', 'database', 'api', 'backend', 'frontend', 'full stack', 'projekt'];
             const isComplexTask = complexKeywords.some(keyword => message.toLowerCase().includes(keyword));
             
+            // If complex flow is disabled, route to original function
+            if (isComplexTask && !enableComplexTasks) {
+                return originalSendMessage();
+            }
+
             if (isComplexTask) {
-                // Create task and show task panel
+                // Add user message to chat FIRST so it stays visible and enters history
+                addMessage(message, true);
+
+                // Create task and show task panel (no auto-open by default)
                 const taskName = message.length > 50 ? message.substring(0, 50) + '...' : message;
                 createTask(taskName, message);
                 
-                // Show task panel if not visible
-                const taskPanel = document.getElementById('task-panel');
-                if (!taskPanel.classList.contains('show')) {
-                    toggleTaskPanel();
+                if (autoOpenTaskPanel) {
+                    const taskPanel = document.getElementById('task-panel');
+                    if (!taskPanel.classList.contains('show')) {
+                        toggleTaskPanel();
+                    }
                 }
                 
-                // Add user message to chat
-                addMessage('user', message);
-                document.getElementById('user-input').value = '';
+                // Do NOT clear the input for complex tasks so korisnik vidi svoj zahtev
+                // document.getElementById('user-input').value = '';
                 
                 return;
             }

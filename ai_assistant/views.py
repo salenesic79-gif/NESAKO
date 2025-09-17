@@ -17,8 +17,22 @@ from django.conf import settings
 from django.middleware.csrf import get_token
 from bs4 import BeautifulSoup
 import base64
+from .memory_manager import PersistentMemoryManager
+from .image_processor import ImageProcessor
+from .command_generator import CommandGenerator
+from .module_manager import ModuleManager
+from .file_operations import FileOperationsManager
+from .task_processor import task_processor, create_code_analysis_task, create_file_processing_task
 
 class DeepSeekAPI(View):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.memory = PersistentMemoryManager()
+        self.image_processor = ImageProcessor()
+        self.command_generator = CommandGenerator()
+        self.module_manager = ModuleManager()
+        self.file_operations = FileOperationsManager()
+        
     def dispatch(self, request, *args, **kwargs):
         # Check authentication for API access
         if not request.session.get('authenticated'):
@@ -360,15 +374,33 @@ class DeepSeekAPI(View):
             return []
 
     def post(self, request):
-        print("=== POST METHOD CALLED ===")
+        print("=== NESAKO AI POST METHOD ===")
         try:
             print(f"Request body: {request.body}")
             print(f"Content type: {request.content_type}")
             
-            data = json.loads(request.body)
-            user_input = data.get('instruction', '')
+            # Handle multipart/form-data for image uploads
+            if request.content_type and 'multipart/form-data' in request.content_type:
+                return self.handle_image_upload(request)
+            
+            # Improved JSON parsing with error handling
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                return JsonResponse({
+                    'error': 'Invalid JSON format',
+                    'status': 'error',
+                    'response': 'Greška u parsiranju zahteva. Molim pokušajte ponovo.'
+                }, status=400)
+            
+            user_input = data.get('instruction', '').strip()
             conversation_history = data.get('conversation_history', [])
             task_id = data.get('task_id', None)
+            
+            print(f"User input: '{user_input}'")
+            print(f"Task ID: {task_id}")
+            print(f"History length: {len(conversation_history)}")
             
             # Handle task progress polling (empty instruction with task_id)
             if task_id and not user_input:
@@ -390,14 +422,19 @@ class DeepSeekAPI(View):
                         'task_id': task_id
                     })
                 else:
-                    # Task not found or invalid
                     return JsonResponse({
                         'response': "Zadatak završen ili nije pronađen.",
                         'status': 'completed'
                     })
             
+            # Validate user input
             if not user_input:
-                return JsonResponse({'error': 'No instruction'}, status=400)
+                print("ERROR: Empty user input")
+                return JsonResponse({
+                    'error': 'Prazan unos',
+                    'status': 'error',
+                    'response': 'Molim unesite vašu poruku ili pitanje.'
+                }, status=400)
             
             # Security threat detection - SAMO za kritične pretnje
             security_warnings = self.detect_critical_threats(user_input)
@@ -408,14 +445,63 @@ class DeepSeekAPI(View):
                     'threat_level': 'critical'
                 })
             
-            # Learning system - analyze user patterns
-            user_context = self.analyze_and_learn_patterns(conversation_history)
+            # Get session ID for memory
+            session_id = request.session.session_key
+            if not session_id:
+                request.session.create()
+                session_id = request.session.session_key
+            
+            # Load conversation history from persistent memory
+            persistent_history = self.memory.get_conversation_history(session_id, limit=20)
+            
+            # Load user learning profile from memory
+            user_context = self.memory.get_learning_profile(session_id)
+            
+            # Update learning from current conversation
+            self.update_learning_from_conversation(session_id, user_input, conversation_history)
+            
+            # Heavy task detection and processing
+            if self.is_heavy_task(user_input):
+                heavy_task_id = f"heavy_{int(datetime.now().timestamp())}"
+                
+                # Determine task type and create appropriate heavy task
+                if any(word in user_input.lower() for word in ['analiziraj kod', 'code analysis', 'optimize code']):
+                    # Extract code from input (simplified)
+                    code_content = self.extract_code_from_input(user_input)
+                    language = self.detect_programming_language(code_content)
+                    
+                    task_result = create_code_analysis_task(heavy_task_id, code_content, language)
+                    
+                    return JsonResponse({
+                        'response': f"🔧 **HEAVY TASK KREIRAN - CODE ANALYSIS**\n\nTask ID: `{heavy_task_id}`\nStatus: Pokrenuto\nTip: Analiza koda ({language})\n\n⏳ Procesiranje u toku...\n\n*Task će biti završen u pozadini. Možete nastaviti sa radom.*",
+                        'status': 'heavy_task_started',
+                        'task_id': heavy_task_id,
+                        'task_type': 'code_analysis'
+                    })
+                
+                elif any(word in user_input.lower() for word in ['procesiraj fajl', 'process file', 'analyze file']):
+                    # File processing task
+                    file_path = self.extract_file_path_from_input(user_input)
+                    operation = self.extract_operation_from_input(user_input)
+                    
+                    task_result = create_file_processing_task(heavy_task_id, file_path, operation)
+                    
+                    return JsonResponse({
+                        'response': f"📁 **HEAVY TASK KREIRAN - FILE PROCESSING**\n\nTask ID: `{heavy_task_id}`\nFajl: `{file_path}`\nOperacija: {operation}\n\n⏳ Procesiranje u toku...\n\n*Task će biti završen u pozadini.*",
+                        'status': 'heavy_task_started',
+                        'task_id': heavy_task_id,
+                        'task_type': 'file_processing'
+                    })
             
             # Autonomous execution - DIREKTNO bez pitanja
             if self.is_complex_task(user_input):
                 plan = self.create_and_execute_plan(user_input, user_context)
                 # Direktno kreiranje task_id i početak izvršavanja
                 new_task_id = f"task_{int(datetime.now().timestamp())}"
+                
+                # Save task to memory
+                self.memory.save_task(new_task_id, user_input, 'executing')
+                
                 return JsonResponse({
                     'response': f"🚀 Kreiram i izvršavam plan:\n\n{plan}\n\n⏳ Započinje izvršavanje...",
                     'status': 'executing',
@@ -435,6 +521,39 @@ class DeepSeekAPI(View):
                 'Thursday': 'četvrtak', 'Friday': 'petak', 'Saturday': 'subota', 'Sunday': 'nedelja'
             }
             day_serbian = days_serbian.get(day_of_week, day_of_week)
+            
+            # Command generation detection
+            command_result = self.command_generator.generate_commands(user_input)
+            command_output = ""
+            if command_result['success']:
+                command_output = self.command_generator.format_commands_for_display(command_result)
+            
+            # Module detection and execution
+            module_request = self.module_manager.detect_module_request(user_input)
+            module_output = ""
+            if module_request['has_module_request']:
+                # Auto-create modules if they don't exist
+                if not self.module_manager.active_modules:
+                    creation_result = self.module_manager.create_and_load_default_modules()
+                    module_output += f"🔧 **KREIRAO SAM NOVE AI MODULE:**\n"
+                    for module in creation_result['loaded']:
+                        module_info = self.module_manager.module_registry.get(module, {})
+                        module_output += f"✅ {module_info.get('name', module)} - {', '.join(module_info.get('capabilities', []))}\n"
+                    module_output += "\n"
+                
+                # Execute module functions based on detected request
+                for detected in module_request['detected_modules']:
+                    module_name = detected['module']
+                    if module_name in self.module_manager.active_modules:
+                        module_output += f"🤖 **{module_name.upper()} MODUL AKTIVAN**\n"
+            
+            # File operations detection and execution
+            file_request = self.file_operations.detect_file_operation_request(user_input)
+            file_output = ""
+            if file_request['has_file_operation']:
+                file_output += "📁 **FILE OPERACIJE DETEKTOVANE:**\n"
+                for operation in file_request['detected_operations']:
+                    file_output += f"✅ {operation['operation']} - Confidence: {operation['confidence']}\n"
             
             # Tool detection i izvršavanje
             tools_output = self.detect_and_execute_tools(user_input)
@@ -513,6 +632,10 @@ NAPREDNI ALATI - KORISTI PROAKTIVNO:
 🛡️ security_scan_advanced(code, auto_fix=True) - napredna bezbednost
 📋 create_project_complete(description, auto_deploy=True) - kompletni projekti
 🚀 deploy_production(project_path, platform="render") - deployment
+⚡ generate_commands(user_request) - generiši copy-paste komande za Git/NPM/Python/CMD
+🔧 heavy_task_processor(task_type, data) - napredni sistem za heavy task processing
+📁 file_operations(operation, path) - direktne operacije na desktop fajlovima
+🤖 ai_modules(module_type) - self-modifying AI moduli (financial, excel, stock)
 
 INSTRUKCIJE ZA IZVRŠAVANJE:
 - NIKAD ne pitaj "da li želite", "da li odobravate" - ODMAH RADI
@@ -530,12 +653,15 @@ KVALITET KODA:
 
 {context_summary}
 
+{command_output if command_output else ''}
+{module_output if module_output else ''}
+{file_output if file_output else ''}
 {tools_output if tools_output else ''}
 {additional_data}
 
 IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
 
-            # API call to DeepSeek
+            # API call to DeepSeek with enhanced error handling
             payload = {
                 'model': 'deepseek-chat',
                 'messages': [
@@ -547,40 +673,119 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
                 'stream': False
             }
             
-            response = requests.post(
-                API_URL,
-                headers=headers,
-                json=payload,
-                timeout=60
-            )
+            print(f"Sending request to DeepSeek API...")
+            print(f"Payload size: {len(str(payload))}")
             
-            if response.status_code == 200:
-                result = response.json()
-                ai_response = result['choices'][0]['message']['content']
+            try:
+                response = requests.post(
+                    API_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
                 
-                # Add explanation for complex tasks
-                if any(keyword in user_input.lower() for keyword in ['kod', 'code', 'program', 'script', 'github', 'analiza', 'debug', 'app', 'aplikacija']):
-                    if not ai_response.endswith('## 🔧 Šta sam uradio:'):
-                        explanation = self.generate_task_explanation(user_input, tools_output)
-                        ai_response += f"\n\n## 🔧 Šta sam uradio:\n{explanation}"
+                print(f"DeepSeek response status: {response.status_code}")
+                print(f"Response headers: {response.headers}")
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    
+                    # Validate response structure
+                    if 'choices' not in result or not result['choices']:
+                        print("ERROR: Invalid API response structure")
+                        return JsonResponse({
+                            'error': 'Invalid API response',
+                            'status': 'error',
+                            'response': 'Greška u odgovoru AI sistema. Molim pokušajte ponovo.'
+                        }, status=500)
+                    
+                    ai_response = result['choices'][0]['message']['content']
+                    
+                    # Validate AI response content
+                    if not ai_response or ai_response.strip() == '':
+                        print("ERROR: Empty AI response")
+                        return JsonResponse({
+                            'error': 'Empty AI response',
+                            'status': 'error',
+                            'response': 'AI sistem je vratio prazan odgovor. Molim pokušajte ponovo sa jasnijim pitanjem.'
+                        }, status=500)
+                    
+                    print(f"AI response length: {len(ai_response)}")
+                    
+                    # Save conversation to persistent memory
+                    chat_id = data.get('chat_id', f"chat_{int(datetime.now().timestamp())}")
+                    tools_list = []
+                    if tools_output:
+                        tools_list = ['web_content', 'github_content', 'code_analysis', 'sports_stats', 'code_execution']
+                    
+                    context_data = {
+                        'user_context': user_context,
+                        'additional_data': bool(additional_data),
+                        'tools_output': bool(tools_output)
+                    }
+                    
+                    conversation_id = self.memory.save_conversation(
+                        session_id=session_id,
+                        user_message=user_input,
+                        ai_response=ai_response,
+                        chat_id=chat_id,
+                        tools_used=tools_list,
+                        context_data=context_data
+                    )
+                    
+                    # Add explanation for complex tasks
+                    if any(keyword in user_input.lower() for keyword in ['kod', 'code', 'program', 'script', 'github', 'analiza', 'debug', 'app', 'aplikacija']):
+                        if not ai_response.endswith('## 🔧 Šta sam uradio:'):
+                            explanation = self.generate_task_explanation(user_input, tools_output)
+                            ai_response += f"\n\n## 🔧 Šta sam uradio:\n{explanation}"
 
+                    return JsonResponse({
+                        'response': ai_response,
+                        'status': 'success',
+                        'timestamp': current_time.isoformat(),
+                        'mode': 'definitivni_asistent',
+                        'tools_used': bool(tools_output),
+                        'context_aware': bool(context_summary),
+                        'response_length': len(ai_response),
+                        'conversation_id': conversation_id,
+                        'memory_active': True
+                    })
+                else:
+                    error_msg = f"DeepSeek API greška: {response.status_code}"
+                    if response.text:
+                        error_msg += f" - {response.text[:500]}"  # Limit error message length
+                    
+                    print(f"API Error: {error_msg}")
+                    
+                    return JsonResponse({
+                        'error': error_msg,
+                        'status': 'error',
+                        'response': f'Greška u komunikaciji sa AI sistemom (kod {response.status_code}). Molim pokušajte ponovo.'
+                    }, status=400)
+                    
+            except requests.exceptions.Timeout:
+                print("ERROR: API request timeout")
                 return JsonResponse({
-                    'response': ai_response,
-                    'status': 'success',
-                    'timestamp': current_time.isoformat(),
-                    'mode': 'definitivni_asistent',
-                    'tools_used': bool(tools_output),
-                    'context_aware': bool(context_summary)
-                })
-            else:
-                error_msg = f"DeepSeek API greška: {response.status_code}"
-                if response.text:
-                    error_msg += f" - {response.text}"
+                    'error': 'Request timeout',
+                    'status': 'error',
+                    'response': 'AI sistem ne odgovara (timeout). Molim pokušajte ponovo.'
+                }, status=408)
                 
+            except requests.exceptions.ConnectionError:
+                print("ERROR: API connection error")
                 return JsonResponse({
-                    'error': error_msg,
-                    'status': 'error'
-                }, status=400)
+                    'error': 'Connection error',
+                    'status': 'error',
+                    'response': 'Nema konekcije sa AI sistemom. Proverite internet vezu.'
+                }, status=503)
+                
+            except Exception as api_error:
+                print(f"ERROR: Unexpected API error: {api_error}")
+                return JsonResponse({
+                    'error': f'Unexpected API error: {str(api_error)}',
+                    'status': 'error',
+                    'response': 'Neočekivana greška u AI sistemu. Molim pokušajte ponovo.'
+                }, status=500)
                 
         except json.JSONDecodeError as e:
             print(f"JSON error: {e}")
@@ -590,11 +795,173 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
             return JsonResponse({'error': str(e)}, status=500)
     
     def get_task_progress(self, task_id):
-        """Track progress of long-running tasks with improved parsing and debug logging"""
+        """Track progress of long-running tasks with heavy task processor integration"""
         import time
         current_time = time.time()
         
         print(f"DEBUG: get_task_progress called with task_id: '{task_id}'")
+        
+        # Check if it's a heavy task
+        if task_id.startswith('heavy_'):
+            heavy_task_status = task_processor.get_task_status(task_id)
+            
+            if heavy_task_status['status'] == 'not_found':
+                return {'status': 'not_found', 'progress': 0}
+            
+            status_mapping = {
+                'pending': 'running',
+                'running': 'running', 
+                'completed': 'completed',
+                'failed': 'failed',
+                'cancelled': 'cancelled',
+                'retrying': 'running'
+            }
+            
+            mapped_status = status_mapping.get(heavy_task_status['status'], 'running')
+            
+            if mapped_status == 'completed':
+                result_text = f"✅ **HEAVY TASK ZAVRŠEN**\n\n"
+                result_text += f"Task ID: `{task_id}`\n"
+                result_text += f"Status: Uspešno završen\n"
+                result_text += f"Trajanje: {self.calculate_task_duration(heavy_task_status)}\n\n"
+                
+                if heavy_task_status.get('result'):
+                    result_text += f"**REZULTAT:**\n{self.format_heavy_task_result(heavy_task_status['result'])}"
+                
+                return {
+                    'status': 'completed',
+                    'progress': 100,
+                    'result': result_text
+                }
+            
+            elif mapped_status == 'failed':
+                error_text = f"❌ **HEAVY TASK NEUSPEŠAN**\n\n"
+                error_text += f"Task ID: `{task_id}`\n"
+                error_text += f"Greška: {heavy_task_status.get('error', 'Nepoznata greška')}\n"
+                error_text += f"Pokušaji: {heavy_task_status.get('retry_count', 0)}\n"
+                
+                return {
+                    'status': 'failed',
+                    'progress': 0,
+                    'result': error_text
+                }
+            
+            else:
+                return {
+                    'status': 'running',
+                    'progress': heavy_task_status.get('progress', 50)
+                }
+    
+    def is_heavy_task(self, user_input: str) -> bool:
+        """Detektuje da li je task heavy i treba background processing"""
+        heavy_keywords = [
+            'analiziraj kod', 'code analysis', 'optimize code', 'deep analysis',
+            'procesiraj fajl', 'process file', 'analyze file', 'large file',
+            'train model', 'machine learning', 'ai training', 'data processing',
+            'heavy computation', 'complex analysis', 'batch processing'
+        ]
+        
+        input_lower = user_input.lower()
+        return any(keyword in input_lower for keyword in heavy_keywords)
+    
+    def extract_code_from_input(self, user_input: str) -> str:
+        """Izvlači kod iz korisničkog unosa"""
+        # Traži kod između ``` blokova
+        import re
+        code_blocks = re.findall(r'```(?:\w+)?\n(.*?)\n```', user_input, re.DOTALL)
+        if code_blocks:
+            return code_blocks[0]
+        
+        # Fallback - uzmi ceo input ako nema code blokova
+        return user_input
+    
+    def detect_programming_language(self, code: str) -> str:
+        """Detektuje programski jezik na osnovu koda"""
+        code_lower = code.lower()
+        
+        if any(keyword in code_lower for keyword in ['def ', 'import ', 'print(', 'if __name__']):
+            return 'python'
+        elif any(keyword in code_lower for keyword in ['function', 'const ', 'let ', 'var ', 'console.log']):
+            return 'javascript'
+        elif any(keyword in code_lower for keyword in ['public class', 'public static void', 'System.out']):
+            return 'java'
+        elif any(keyword in code_lower for keyword in ['#include', 'int main', 'printf', 'cout']):
+            return 'c++'
+        elif any(keyword in code_lower for keyword in ['SELECT', 'FROM', 'WHERE', 'INSERT']):
+            return 'sql'
+        else:
+            return 'text'
+    
+    def extract_file_path_from_input(self, user_input: str) -> str:
+        """Izvlači putanju fajla iz unosa"""
+        import re
+        
+        # Traži putanje u navodnicima
+        path_pattern = r'"([^"]+\.[a-zA-Z0-9]+)"'
+        matches = re.findall(path_pattern, user_input)
+        if matches:
+            return matches[0]
+        
+        # Traži Windows putanje
+        windows_pattern = r'[A-Za-z]:\\[^\\/:*?"<>|\r\n]+\.[a-zA-Z0-9]+'
+        matches = re.findall(windows_pattern, user_input)
+        if matches:
+            return matches[0]
+        
+        return "unknown_file.txt"
+    
+    def extract_operation_from_input(self, user_input: str) -> str:
+        """Izvlači tip operacije iz unosa"""
+        input_lower = user_input.lower()
+        
+        if any(word in input_lower for word in ['analyze', 'analiziraj']):
+            return 'analyze'
+        elif any(word in input_lower for word in ['convert', 'konvertuj']):
+            return 'convert'
+        elif any(word in input_lower for word in ['compress', 'kompresuj']):
+            return 'compress'
+        elif any(word in input_lower for word in ['backup', 'bekap']):
+            return 'backup'
+        else:
+            return 'process'
+    
+    def calculate_task_duration(self, task_status: Dict) -> str:
+        """Računa trajanje task-a"""
+        if not task_status.get('started_at') or not task_status.get('completed_at'):
+            return "N/A"
+        
+        from datetime import datetime
+        try:
+            started = datetime.fromisoformat(task_status['started_at'])
+            completed = datetime.fromisoformat(task_status['completed_at'])
+            duration = completed - started
+            
+            total_seconds = int(duration.total_seconds())
+            if total_seconds < 60:
+                return f"{total_seconds} sekundi"
+            elif total_seconds < 3600:
+                minutes = total_seconds // 60
+                return f"{minutes} minuta"
+            else:
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                return f"{hours}h {minutes}m"
+        except:
+            return "N/A"
+    
+    def format_heavy_task_result(self, result: Any) -> str:
+        """Formatira rezultat heavy task-a za prikaz"""
+        if isinstance(result, dict):
+            formatted = ""
+            for key, value in result.items():
+                formatted += f"- **{key}**: {value}\n"
+            return formatted
+        elif isinstance(result, list):
+            return "\n".join([f"- {item}" for item in result])
+        else:
+            return str(result)
+        
+        # Legacy task handling
         print(f"DEBUG: Current time: {current_time}")
         
         try:
@@ -748,13 +1115,82 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
         
         return " | ".join(context_parts) if context_parts else "Učim vaše preferencije..."
     
+    def update_learning_from_conversation(self, session_id: str, user_input: str, conversation_history: list):
+        """Ažurira učenje na osnovu trenutne konverzacije"""
+        try:
+            # Analiziraj programske jezike
+            languages = []
+            frameworks = []
+            project_types = []
+            
+            # Detektuj iz trenutnog unosa
+            content = user_input.lower()
+            
+            # Programski jezici
+            lang_patterns = {
+                'python': ['python', 'django', 'flask', 'fastapi', '.py'],
+                'javascript': ['javascript', 'js', 'node', 'react', 'vue', 'angular'],
+                'typescript': ['typescript', 'ts'],
+                'java': ['java', 'spring'],
+                'csharp': ['c#', 'csharp', '.net', 'asp.net'],
+                'php': ['php', 'laravel', 'symfony'],
+                'go': ['golang', 'go'],
+                'rust': ['rust'],
+                'cpp': ['c++', 'cpp']
+            }
+            
+            for lang, patterns in lang_patterns.items():
+                if any(pattern in content for pattern in patterns):
+                    languages.append(lang)
+            
+            # Framework-ovi
+            fw_patterns = {
+                'django': ['django'],
+                'react': ['react', 'reactjs'],
+                'vue': ['vue', 'vuejs'],
+                'angular': ['angular'],
+                'express': ['express', 'expressjs'],
+                'flask': ['flask'],
+                'fastapi': ['fastapi']
+            }
+            
+            for fw, patterns in fw_patterns.items():
+                if any(pattern in content for pattern in patterns):
+                    frameworks.append(fw)
+            
+            # Tipovi projekata
+            if any(word in content for word in ['web app', 'aplikacija', 'website', 'sajt']):
+                project_types.append('web_development')
+            if any(word in content for word in ['api', 'rest', 'microservice']):
+                project_types.append('api_development')
+            if any(word in content for word in ['analiza', 'data', 'statistik', 'ml', 'ai']):
+                project_types.append('data_analysis')
+            if any(word in content for word in ['mobile', 'android', 'ios']):
+                project_types.append('mobile_development')
+            
+            # Sačuvaj naučene podatke
+            if languages:
+                self.memory.save_learning_data(session_id, 'programming_languages', languages, 0.8)
+            if frameworks:
+                self.memory.save_learning_data(session_id, 'frameworks', frameworks, 0.8)
+            if project_types:
+                self.memory.save_learning_data(session_id, 'project_types', project_types, 0.7)
+            
+            # Analiziraj stil komunikacije
+            if any(word in content for word in ['brzo', 'hitno', 'odmah', 'sada']):
+                self.memory.save_learning_data(session_id, 'communication_style', 'urgent', 0.6)
+            elif any(word in content for word in ['objasni', 'detaljno', 'korak po korak']):
+                self.memory.save_learning_data(session_id, 'communication_style', 'detailed', 0.6)
+            
+        except Exception as e:
+            print(f"Error updating learning: {e}")
+    
     def create_and_execute_plan(self, user_input, user_context):
         """Create comprehensive execution plan with best practices"""
         task_type = self.identify_advanced_task_type(user_input)
         
         advanced_plans = {
-            'web_app': """
-🚀 NAPREDNI WEB APP PLAN:
+            'web_app': """🚀 NAPREDNI WEB APP PLAN:
 1. 📋 Arhitekturna analiza i tehnološki stack
 2. 🏗️ Kreiranje scalable strukture sa microservices
 3. 🎨 Modern UI/UX sa responsive design
@@ -764,10 +1200,8 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
 7. 🛡️ Security implementation (auth, CORS, validation)
 8. 🚀 CI/CD pipeline i production deployment
 9. 📊 Monitoring, logging i analytics
-10. 📚 Kompletna dokumentacija i API specs
-            """,
-            'api': """
-🚀 ENTERPRISE API PLAN:
+10. 📚 Kompletna dokumentacija i API specs""",
+            'api': """🚀 ENTERPRISE API PLAN:
 1. 📋 OpenAPI 3.0 specifikacija
 2. 🏗️ Microservices arhitektura
 3. 🔧 RESTful endpoints sa GraphQL
@@ -777,10 +1211,8 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
 7. 📖 Interactive API dokumentacija
 8. 🚀 Docker containerization i K8s deployment
 9. 📈 Performance monitoring i caching
-10. 🔄 Versioning i backward compatibility
-            """,
-            'data_analysis': """
-🚀 NAPREDNA DATA ANALIZA:
+10. 🔄 Versioning i backward compatibility""",
+            'data_analysis': """🚀 NAPREDNA DATA ANALIZA:
 1. 📊 Data pipeline arhitektura
 2. 🧹 ETL procesi sa data validation
 3. 📈 Eksplorativna analiza sa vizualizacijama
@@ -790,10 +1222,8 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
 7. 📊 Real-time analytics
 8. 🚀 Cloud deployment (AWS/GCP/Azure)
 9. 🔄 Model monitoring i retraining
-10. 📚 Kompletna dokumentacija i insights
-            """,
-            'mobile_app': """
-🚀 MOBILNA APLIKACIJA PLAN:
+10. 📚 Kompletna dokumentacija i insights""",
+            'mobile_app': """🚀 MOBILNA APLIKACIJA PLAN:
 1. 📋 Definicija funkcionalnosti i dizajna
 2. 🏗️ Kreiranje mobilne aplikacije sa React Native ili Flutter
 3. 🎨 UI/UX dizajn sa korisničkim iskustvom
@@ -801,10 +1231,8 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
 5. 🧪 Testiranje aplikacije
 6. 📈 Optimizacija performansi
 7. 📊 Analitika i monitoring
-8. 📚 Dokumentacija i podrška
-            """,
-            'desktop_app': """
-🚀 DESKTOP APLIKACIJA PLAN:
+8. 📚 Dokumentacija i podrška""",
+            'desktop_app': """🚀 DESKTOP APLIKACIJA PLAN:
 1. 📋 Definicija funkcionalnosti i dizajna
 2. 🏗️ Kreiranje desktop aplikacije sa Electron ili Qt
 3. 🎨 UI/UX dizajn sa korisničkim iskustvom
@@ -812,8 +1240,7 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
 5. 🧪 Testiranje aplikacije
 6. 📈 Optimizacija performansi
 7. 📊 Analitika i monitoring
-8. 📚 Dokumentacija i podrška
-            """
+8. 📚 Dokumentacija i podrška"""
         }
         
         return advanced_plans.get(task_type, advanced_plans['web_app'])
@@ -970,6 +1397,199 @@ Da li želite da nastavite? (potrebna je eksplicitna potvrda)"""
         explanations.append("• Dao sam praktično rešenje koje možete odmah primeniti")
         
         return "\n".join(explanations)
+    
+    def handle_image_upload(self, request):
+        """Obrađuje upload slika"""
+        try:
+            print("=== IMAGE UPLOAD DETECTED ===")
+            
+            # Get uploaded files
+            uploaded_files = request.FILES.getlist('images')
+            if not uploaded_files:
+                return JsonResponse({
+                    'error': 'Nema upload-ovanih slika',
+                    'status': 'error',
+                    'response': 'Molim upload-ujte sliku za analizu.'
+                }, status=400)
+            
+            # Get text instruction if provided
+            user_instruction = request.POST.get('instruction', '').strip()
+            
+            # Process each image
+            processed_images = []
+            image_descriptions = []
+            
+            for uploaded_file in uploaded_files[:3]:  # Limit to 3 images
+                print(f"Processing image: {uploaded_file.name}")
+                
+                # Read image data
+                image_data = uploaded_file.read()
+                
+                # Process image
+                result = self.image_processor.process_uploaded_image(image_data, uploaded_file.name)
+                
+                if result['success']:
+                    processed_images.append({
+                        'filename': uploaded_file.name,
+                        'info': result['image_info'],
+                        'analysis': result['analysis'],
+                        'base64': result['image_base64'][:1000] + '...' if len(result['image_base64']) > 1000 else result['image_base64']  # Truncate for response
+                    })
+                    
+                    # Generate description
+                    description = self.image_processor.generate_image_description(
+                        result['analysis'], 
+                        result['image_info']
+                    )
+                    image_descriptions.append(f"📸 {uploaded_file.name}: {description}")
+                else:
+                    return JsonResponse({
+                        'error': result['error'],
+                        'status': 'error',
+                        'response': f'Greška pri obradi slike {uploaded_file.name}: {result["error"]}'
+                    }, status=400)
+            
+            # Create AI prompt with image analysis
+            image_context = "\n".join(image_descriptions)
+            
+            if user_instruction:
+                combined_prompt = f"""ANALIZA SLIKA:
+{image_context}
+
+KORISNIKOV ZAHTEV:
+{user_instruction}
+
+Molim analiziraj upload-ovane slike i odgovori na korisnikov zahtev. Koristi detalje iz analize slika da daš precizan i koristan odgovor."""
+            else:
+                combined_prompt = f"""ANALIZA UPLOAD-OVANIH SLIKA:
+{image_context}
+
+Molim analiziraj ove slike i daj detaljnu analizu sa preporukama za poboljšanje ili dalju obradu."""
+            
+            # Get session ID for memory
+            session_id = request.session.session_key
+            if not session_id:
+                request.session.create()
+                session_id = request.session.session_key
+            
+            # Save to memory
+            self.memory.save_conversation(
+                session_id=session_id,
+                user_message=f"Upload slika: {', '.join([f.name for f in uploaded_files])} - {user_instruction}",
+                ai_response="Obrađujem upload-ovane slike...",
+                tools_used=['image_processing'],
+                context_data={'images_processed': len(processed_images)}
+            )
+            
+            # Call DeepSeek API with image analysis
+            API_URL = "https://api.deepseek.com/v1/chat/completions"
+            API_KEY = os.environ.get('DEEPSEEK_API_KEY')
+            
+            if not API_KEY:
+                return JsonResponse({
+                    'error': 'DeepSeek API key nije konfigurisan',
+                    'status': 'error'
+                }, status=500)
+            
+            headers = {
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            # Get current time
+            belgrade_tz = pytz.timezone('Europe/Belgrade')
+            current_time = datetime.now(belgrade_tz)
+            current_time_str = current_time.strftime("%H:%M")
+            current_date = current_time.strftime("%d.%m.%Y")
+            day_of_week = current_time.strftime("%A")
+            
+            days_serbian = {
+                'Monday': 'ponedeljak', 'Tuesday': 'utorak', 'Wednesday': 'sreda',
+                'Thursday': 'četvrtak', 'Friday': 'petak', 'Saturday': 'subota', 'Sunday': 'nedelja'
+            }
+            day_serbian = days_serbian.get(day_of_week, day_of_week)
+            
+            system_message = f"""Ti si NESAKO AI - napredni asistent za analizu slika i vizuelni sadržaj.
+
+TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
+
+SPECIJALIZACIJA ZA SLIKE:
+🖼️ Detaljno analiziram sve aspekte slika (kompozicija, boje, kvalitet, sadržaj)
+🔍 Prepoznajem objekte, tekst, ljude, arhitekturu, prirodu
+🎨 Dajem savete za poboljšanje fotografija i dizajna
+💡 Predlažem kreativne ideje i izmene
+🛠️ Objašnjavam tehničke aspekte (osvetljenje, kontrast, rezolucija)
+📊 Poredim više slika i dajem komparativnu analizu
+
+INSTRUKCIJE:
+- Analiziraj svaku sliku detaljno i precizno
+- Koristi srpski jezik za sve odgovore
+- Daj praktične savete i preporuke
+- Budi kreativan i koristan
+- Fokusiraj se na ono što korisnik pita
+
+Odgovori direktno i korisno na osnovu analize slika."""
+
+            payload = {
+                'model': 'deepseek-chat',
+                'messages': [
+                    {'role': 'system', 'content': system_message},
+                    {'role': 'user', 'content': combined_prompt}
+                ],
+                'temperature': 0.4,
+                'max_tokens': 3000,
+                'stream': False
+            }
+            
+            try:
+                response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    ai_response = result['choices'][0]['message']['content']
+                    
+                    # Update memory with final response
+                    self.memory.save_conversation(
+                        session_id=session_id,
+                        user_message=f"Upload slika: {', '.join([f.name for f in uploaded_files])} - {user_instruction}",
+                        ai_response=ai_response,
+                        tools_used=['image_processing', 'ai_analysis'],
+                        context_data={
+                            'images_processed': len(processed_images),
+                            'image_details': [img['info'] for img in processed_images]
+                        }
+                    )
+                    
+                    return JsonResponse({
+                        'response': ai_response,
+                        'status': 'success',
+                        'timestamp': current_time.isoformat(),
+                        'mode': 'image_analysis',
+                        'images_processed': len(processed_images),
+                        'image_data': processed_images,
+                        'tools_used': True
+                    })
+                else:
+                    return JsonResponse({
+                        'error': f'DeepSeek API greška: {response.status_code}',
+                        'status': 'error',
+                        'response': 'Greška pri analizi slika. Molim pokušajte ponovo.'
+                    }, status=400)
+                    
+            except Exception as api_error:
+                return JsonResponse({
+                    'error': f'API greška: {str(api_error)}',
+                    'status': 'error',
+                    'response': 'Greška pri komunikaciji sa AI sistemom.'
+                }, status=500)
+                
+        except Exception as e:
+            print(f"Image upload error: {e}")
+            return JsonResponse({
+                'error': f'Greška pri upload-u: {str(e)}',
+                'status': 'error',
+                'response': 'Greška pri obradi upload-ovanih slika.'
+            }, status=500)
 
 
 class LoginView(View):
