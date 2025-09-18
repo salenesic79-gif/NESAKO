@@ -17,6 +17,7 @@ from django.conf import settings
 from django.middleware.csrf import get_token
 from bs4 import BeautifulSoup
 import base64
+from typing import Any, Dict, List, Optional
 from .memory_manager import PersistentMemoryManager
 from .image_processor import ImageProcessor
 from .command_generator import CommandGenerator
