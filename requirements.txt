@@ -5,3 +5,4 @@ gunicorn>=20.1.0
 pytz
 beautifulsoup4
 lxml
+Pillow>=10.3.0
