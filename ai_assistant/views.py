@@ -24,6 +24,8 @@ from .command_generator import CommandGenerator
 from .module_manager import ModuleManager
 from .file_operations import FileOperationsManager
 from .task_processor import task_processor, create_code_analysis_task, create_file_processing_task
+from .nesako_chatbot import NESAKOChatbot
+from .models import LessonLearned
 
 class DeepSeekAPI(View):
     def __init__(self, *args, **kwargs):
@@ -33,6 +35,8 @@ class DeepSeekAPI(View):
         self.command_generator = CommandGenerator()
         self.module_manager = ModuleManager()
         self.file_operations = FileOperationsManager()
+        # NESAKO Chatbot with ORM-backed memory and SerpAPI integration
+        self.nesako = NESAKOChatbot()
         
     def dispatch(self, request, *args, **kwargs):
         # Check authentication for API access
@@ -292,6 +296,42 @@ class DeepSeekAPI(View):
             tools_output = "\n".join(status_updates) + "\n" + tools_output
                 
         return tools_output
+
+    # --- Novi: Provera pouzdanosti odgovora i fallback na web ---
+    def is_confident_answer(self, response_text: str, min_confidence: float = 0.7) -> bool:
+        """Heuristika za procenu pouzdanosti odgovora.
+        Ako model ne vraća score, koristimo jednostavne provere: dužina, negacije, indikatori nesigurnosti.
+        """
+        if not response_text:
+            return False
+        text = response_text.lower()
+        uncertain_markers = [
+            'nisam siguran', 'ne mogu da proverim', 'možda', 'verovatno',
+            'nemam dovoljno informacija', 'ne mogu da pristupim', 'nepoznato'
+        ]
+        if any(m in text for m in uncertain_markers):
+            return False
+        if 'sigurno' in text:
+            return True
+        # Minimalna dužina kao prag
+        return len(text.strip()) > 40
+
+    def apply_confidence_fallback(self, user_input: str, ai_response: str) -> str:
+        """Ako odgovor nije dovoljno pouzdan, ili je eksplicitno traženo 'trenutno/realno/najnovije',
+        automatski dodaj web pretragu kao izvor i priloži URL.
+        """
+        try:
+            lower_q = user_input.lower()
+            force_web = any(w in lower_q for w in ['trenutno', 'realno stanje', 'najnovije'])
+            if self.is_confident_answer(ai_response) and not force_web:
+                return ai_response
+            # Automatski fallback na web
+            search_url = f"https://www.google.com/search?q={urllib.parse.quote(user_input)}"
+            web_text = self.get_web_content(search_url)
+            prefix = "Nisam siguran, ali evo šta sam našao na internetu:\n"
+            return f"{prefix}{web_text}\n\nIzvor: {search_url}"
+        except Exception as e:
+            return ai_response
 
     def get_web_data(self, query):
         """Postojeća funkcija za web pretragu"""
@@ -573,13 +613,63 @@ class DeepSeekAPI(View):
                     additional_data += "\nNAJNOVIJE VESTI:\n"
                     for item in news:
                         additional_data += f"- {item['title']}\n"
+            # Use SerpAPI-backed search for current/info queries (reduces halucinacije)
+            if any(word in user_input.lower() for word in ['pretraži', 'pronađi', 'informacije o', 'šta je', 'rezultat', 'utakmica', 'danas', 'sada']):
+                serp_snippets = self.nesako.search_web(user_input)
+                if serp_snippets:
+                    additional_data += "\nINFORMACIJE SA WEBA (SerpAPI):\n"
+                    for snippet in serp_snippets:
+                        additional_data += f"- {snippet}\n"
             
-            if any(word in user_input.lower() for word in ['pretraži', 'pronađi', 'informacije o', 'šta je']):
-                search_results = self.get_web_data(user_input)
-                if search_results:
-                    additional_data += "\nINFORMACIJE SA WEBA:\n"
-                    for result in search_results:
-                        additional_data += f"- {result['title']}: {result['snippet']}\n"
+            # NESAKO centralno rutiranje za sportska pitanja (obavezna web pretraga)
+            if any(keyword in user_input.lower() for keyword in getattr(self.nesako, 'sports_keywords', [])):
+                ai_response = self.nesako.get_response(user_input)
+
+                # Persist konverzacije i učenje
+                try:
+                    self.nesako.memory.store_conversation(user_input, ai_response)
+                    self.nesako.learn_from_conversation(user_input, ai_response)
+                except Exception as e:
+                    print(f"NESAKO persistence error (sports): {e}")
+
+                # Sačuvaj u persistent memory
+                chat_id = data.get('chat_id', f"chat_{int(datetime.now().timestamp())}")
+                tools_list = []
+                if serp_snippets:
+                    tools_list.append('serpapi_search')
+
+                context_data = {
+                    'user_context': user_context,
+                    'additional_data': bool(additional_data),
+                    'tools_output': bool(tools_output)
+                }
+
+                conversation_id = self.memory.save_conversation(
+                    session_id=session_id,
+                    user_message=user_input,
+                    ai_response=ai_response,
+                    chat_id=chat_id,
+                    tools_used=tools_list,
+                    context_data=context_data
+                )
+
+                # Dodaj objašnjenje ako je tehničko pitanje
+                if any(keyword in user_input.lower() for keyword in ['kod', 'code', 'program', 'script', 'github', 'analiza', 'debug', 'app', 'aplikacija']):
+                    if not ai_response.endswith('## 🔧 Šta sam uradio:'):
+                        explanation = self.generate_task_explanation(user_input, tools_output)
+                        ai_response += f"\n\n## 🔧 Šta sam uradio:\n{explanation}"
+
+                return JsonResponse({
+                    'response': ai_response,
+                    'status': 'success',
+                    'timestamp': current_time.isoformat(),
+                    'mode': 'definitivni_asistent',
+                    'tools_used': bool(tools_output or serp_snippets),
+                    'context_aware': bool(context_summary),
+                    'response_length': len(ai_response),
+                    'conversation_id': conversation_id,
+                    'memory_active': True
+                })
             
             # Conversation context
             context_summary = ""
@@ -701,6 +791,8 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
                         }, status=500)
                     
                     ai_response = result['choices'][0]['message']['content']
+                    # Provera pouzdanosti i automatski web fallback po potrebi
+                    ai_response = self.apply_confidence_fallback(user_input, ai_response)
                     
                     # Validate AI response content
                     if not ai_response or ai_response.strip() == '':
@@ -713,6 +805,19 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
                     
                     print(f"AI response length: {len(ai_response)}")
                     
+                    # Persist conversation and learning via NESAKO ORM-backed memory
+                    try:
+                        self.nesako.memory.store_conversation(user_input, ai_response)
+                        self.nesako.learn_from_conversation(user_input, ai_response)
+                        # Ako korisnik daje uputstvo/pravilo, sačuvaj kao LessonLearned
+                        if any(p in user_input.lower() for p in ['zapamti', 'nikad', 'uvek', 'nemoj']):
+                            try:
+                                LessonLearned.objects.create(lesson_text=user_input, source='conversation', user=str(request.session.get('user', 'private')))
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        print(f"NESAKO ORM persistence error: {e}")
+
                     # Save conversation to persistent memory
                     chat_id = data.get('chat_id', f"chat_{int(datetime.now().timestamp())}")
                     tools_list = []
@@ -794,6 +899,51 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
         except Exception as e:
             print(f"Error: {e}")
             return JsonResponse({'error': str(e)}, status=500)
+
+# ============== PUBLIC JSON ENDPOINTS ==============
+from django.views.decorators.http import require_http_methods
+
+@require_http_methods(["GET"])
+def lessons_view(request):
+    lessons = LessonLearned.objects.all().order_by('-created_at')
+    data = [{
+        "id": l.id,
+        "text": l.lesson_text,
+        "user": l.user,
+        "time": l.created_at.isoformat(),
+        "feedback": l.feedback
+    } for l in lessons]
+    return JsonResponse({"lessons": data})
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def update_feedback(request, lesson_id):
+    try:
+        feedback = request.POST.get("feedback") or (json.loads(request.body).get('feedback') if request.body else None)
+        if feedback not in ["correct", "incorrect", "pending"]:
+            return JsonResponse({"error": "Invalid feedback"}, status=400)
+        lesson = LessonLearned.objects.get(id=lesson_id)
+        lesson.feedback = feedback
+        lesson.save(update_fields=["feedback"])
+        return JsonResponse({"status": "ok"})
+    except LessonLearned.DoesNotExist:
+        return JsonResponse({"error": "Lesson not found"}, status=404)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def web_check(request):
+    """Jednostavan endpoint koji vraća web sadržaj za upit 'q' preko Google pretrage."""
+    q = request.GET.get('q', '').strip()
+    if not q:
+        return JsonResponse({"error": "Missing q"}, status=400)
+    try:
+        search_url = f"https://www.google.com/search?q={urllib.parse.quote(q)}"
+        content = DeepSeekAPI().get_web_content(search_url)
+        return JsonResponse({"query": q, "source": search_url, "content": content})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
     
     def get_task_progress(self, task_id):
         """Track progress of long-running tasks with heavy task processor integration"""

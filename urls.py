@@ -1,6 +1,14 @@
 from django.urls import path, include
 from django.views.generic import TemplateView
-from ai_assistant.views import DeepSeekAPI, LoginView, LogoutView, ProtectedTemplateView
+from ai_assistant.views import (
+    DeepSeekAPI,
+    LoginView,
+    LogoutView,
+    ProtectedTemplateView,
+    lessons_view,
+    update_feedback,
+    web_check,
+)
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 from django.conf import settings
@@ -19,6 +27,11 @@ urlpatterns = [
     path('', ProtectedTemplateView.as_view(template_name='index.html'), name='home'),
     # AI Assistant API (protected)
     path('api/chat/', csrf_exempt(DeepSeekAPI.as_view()), name='deepseek_chat'),
+    # Lessons endpoints
+    path('lessons', lessons_view, name='lessons'),
+    path('lessons/<int:lesson_id>/feedback', csrf_exempt(update_feedback), name='update_feedback'),
+    # Web check endpoint
+    path('web_check', csrf_exempt(web_check), name='web_check'),
 ]
 
 # Serve static files in development and production

@@ -725,6 +725,9 @@
                     <button id="quick-access-btn" class="quick-access-btn" onclick="quickAccess()" title="Brzi pristup">
                         🚀 Brzi pristup
                     </button>
+                    <button class="history-btn" onclick="showLessonsUI()" style="background: rgba(40,167,69,0.2); margin-left: 10px;">
+                        📚 Prikaži naučeno
+                    </button>
                     <button class="history-btn" onclick="logout()" style="background: rgba(220,53,69,0.2); margin-left: 10px;">
                         🚪 Izloguj se
                     </button>
@@ -845,6 +848,9 @@ Možete koristiti:
                 <button id="send-btn" onclick="sendMessage()" title="Pošalji poruku (Enter)">
                     ➤
                 </button>
+                <button class="history-btn" onclick="checkOnWeb()" title="Proveri na webu" style="background:#fff;color:#333;border:1px solid #e0e0f0;border-radius:20px;padding:8px 12px;">
+                    🌐 Proveri na webu
+                </button>
             </div>
         </div>
         
@@ -883,6 +889,62 @@ Možete koristiti:
                     preview: "Dobrodošli u NESAKO AI..."
                 }
             ];
+        }
+
+        // Proveri na webu - koristi backend /web_check
+        async function checkOnWeb() {
+            const input = document.getElementById('user-input').value.trim();
+            if (!input) return alert('Unesite upit za pretragu.');
+            updateStatus('Pretražujem web...', true);
+            try {
+                const res = await fetch(`/web_check?q=${encodeURIComponent(input)}`);
+                const data = await res.json();
+                const msg = data.content ? data.content : (data.error || 'Nema podataka');
+                addAIMessage(`Nisam siguran, ali evo šta sam našao na internetu:\n${msg}`);
+            } catch (e) {
+                addAIMessage('Greška pri pretrazi weba.');
+            } finally {
+                updateStatus('Spreman za rad', false);
+            }
+        }
+
+        // UI za prikaz lessons_learned
+        async function showLessonsUI() {
+            try {
+                const res = await fetch('/lessons');
+                const data = await res.json();
+                showLessons(data);
+            } catch (e) {
+                alert('Greška pri učitavanju naučenog.');
+            }
+        }
+
+        function showLessons(data) {
+            if (!data || !data.lessons) return alert('Nema podataka.');
+            const lines = data.lessons.map(l => `${l.text} (${l.user || 'private'}) [${l.feedback}]\n`+
+                `  • Feedback: `+
+                `[Tačno] onclick: sendFeedback(${l.id}, 'correct') | `+
+                `[Netačno] onclick: sendFeedback(${l.id}, 'incorrect')`
+            );
+            alert(lines.join("\n---\n"));
+        }
+
+        async function sendFeedback(lessonId, verdict) {
+            try {
+                const res = await fetch(`/lessons/${lessonId}/feedback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feedback: verdict })
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    alert('Hvala na povratnoj informaciji.');
+                } else {
+                    alert('Greška: ' + (data.error || 'nepoznato'));
+                }
+            } catch (e) {
+                alert('Greška pri slanju feedback-a.');
+            }
         }
         
         // Update session stats

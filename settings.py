@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import dj_database_url
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -63,13 +64,19 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'wsgi.application'
 
-# Database - SQLite sa jedinstvenim nazivom
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'nesako_ai_assistant.sqlite3',
+# Database: use DATABASE_URL if provided (Render Postgres), else fallback to SQLite
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=True)
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'nesako_ai_assistant.sqlite3',
+        }
+    }
 
 # Internationalization
 LANGUAGE_CODE = 'sr-rs'
@@ -106,3 +113,22 @@ if not DEBUG:
 SESSION_COOKIE_NAME = 'nesako_ai_sessionid'
 CSRF_COOKIE_NAME = 'nesako_ai_csrftoken'
 SESSION_COOKIE_AGE = 86400  # 24 hours
+
+# Plugin system loader - optional
+try:
+    import importlib
+    plugin_folder = BASE_DIR / 'plugins'
+    PLUGINS = []
+    if plugin_folder.exists():
+        for fname in os.listdir(plugin_folder):
+            if fname.endswith('.py') and fname not in ['__init__.py']:
+                mod_name = f"plugins.{fname[:-3]}"
+                try:
+                    mod = importlib.import_module(mod_name)
+                    if hasattr(mod, 'register'):
+                        PLUGINS.append(mod.register)
+                except Exception:
+                    # Do not break startup because of plugin error
+                    pass
+except Exception:
+    PLUGINS = []
