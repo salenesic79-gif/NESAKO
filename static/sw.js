@@ -1,13 +1,11 @@
-const CACHE_NAME = 'nesako-ai-v2.0';
-const STATIC_CACHE = 'nesako-static-v2.0';
-const DYNAMIC_CACHE = 'nesako-dynamic-v2.0';
+const CACHE_NAME = 'nesako-ai-v2.1';
+const STATIC_CACHE = 'nesako-static-v2.1';
+const DYNAMIC_CACHE = 'nesako-dynamic-v2.1';
 
 // Static assets to cache immediately
 const STATIC_ASSETS = [
   '/',
-  '/static/manifest.json',
-  '/static/icon-192.png',
-  '/static/icon-512.png',
+  '/manifest.json',
   '/login/',
   '/api/chat/'
 ];
@@ -189,32 +187,16 @@ self.addEventListener('sync', event => {
 // Push notifications
 self.addEventListener('push', event => {
   console.log('[SW] Push received:', event);
-  
   const options = {
     body: event.data ? event.data.text() : 'Nova poruka od NESAKO AI',
-    icon: '/static/icon-192.png',
-    badge: '/static/icon-192.png',
     vibrate: [200, 100, 200],
-    data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
-    },
+    data: { dateOfArrival: Date.now(), primaryKey: 1 },
     actions: [
-      {
-        action: 'open',
-        title: 'Otvori chat',
-        icon: '/static/icon-192.png'
-      },
-      {
-        action: 'close',
-        title: 'Zatvori'
-      }
+      { action: 'open', title: 'Otvori chat' },
+      { action: 'close', title: 'Zatvori' }
     ]
   };
-  
-  event.waitUntil(
-    self.registration.showNotification('NESAKO AI', options)
-  );
+  event.waitUntil(self.registration.showNotification('NESAKO AI', options));
 });
 
 // Notification click handling

@@ -5,9 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#16213e">
-    <link rel="manifest" href="{% static 'manifest.json' %}">
-    <!-- Fallback explicit route -->
-    <link rel="alternate" href="/manifest.json" type="application/manifest+json">
+    <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="{% static 'icons/icon-192x192.png' %}">
     <title>NESAKO AI Asistent</title>
     <style>
@@ -728,7 +726,7 @@
                     <button id="quick-access-btn" class="quick-access-btn" onclick="quickAccess()" title="Brzi pristup">
                         🚀 Brzi pristup
                     </button>
-                    <button class="history-btn" onclick="showLessonsUI()" style="background: rgba(40,167,69,0.2); margin-left: 10px;">
+                    <button class="history-btn" onclick="showLessonsUI()" style="background:#fff;color:#333;border:1px solid #e0e0f0;border-radius:20px;padding:8px 12px;">
                         📚 Prikaži naučeno
                     </button>
                     <button class="history-btn" onclick="logout()" style="background: rgba(220,53,69,0.2); margin-left: 10px;">

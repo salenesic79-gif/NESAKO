@@ -72,6 +72,18 @@ class DeepSeekAPI(View):
             return any(k in text for k in keywords)
         except Exception:
             return False
+
+    # --- Safe stub: complex task detector expected by some UI flows
+    def is_complex_task(self, user_input: str) -> bool:
+        """Heuristic for complex tasks; default False to keep UX stable."""
+        try:
+            if not user_input:
+                return False
+            text = user_input.lower()
+            patterns = ['kompleks', 'complex', 'plan', 'arhitekt', 'refactor', 'migrate', 'docker', 'kubernetes']
+            return any(p in text for p in patterns)
+        except Exception:
+            return False
         
     def dispatch(self, request, *args, **kwargs):
         # Check authentication for API access

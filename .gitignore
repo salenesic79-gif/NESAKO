@@ -62,3 +62,9 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+.aider*
+.env
+.env
+.env
+.env
+.env
