@@ -8,3 +8,4 @@ lxml
 Pillow>=10.3.0
 dj-database-url>=0.5.0
 psycopg2-binary>=2.9.9
+whitenoise>=6.6.0

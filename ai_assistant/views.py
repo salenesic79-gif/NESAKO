@@ -49,6 +49,17 @@ class DeepSeekAPI(View):
             return []
         except Exception:
             return []
+
+    # --- Safe stub: UI may call this to update learning
+    def update_learning_from_conversation(self, session_id: str, user_input: str, conversation_history: list):
+        """Stub for UI compatibility. Delegates to NESAKO memory if available, else no-op."""
+        try:
+            # Delegate to NESAKO chatbot learning system if present
+            if hasattr(self.nesako, 'learn_from_conversation'):
+                self.nesako.learn_from_conversation(user_input or '', '')
+            return True
+        except Exception:
+            return False
         
     def dispatch(self, request, *args, **kwargs):
         # Check authentication for API access
