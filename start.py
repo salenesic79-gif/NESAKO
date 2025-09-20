@@ -20,6 +20,10 @@ def main():
     """Run Django migrations and start gunicorn"""
     print("Starting NESAKO AI deployment...")
     
+    # Collect static files so /static/manifest.json and other assets are available
+    print("Collecting static files...")
+    run_command("python manage.py collectstatic --noinput")
+
     # Run migrations
     if not run_command("python manage.py migrate --noinput"):
         print("Migration failed, but continuing...")
