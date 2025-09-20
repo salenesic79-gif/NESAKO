@@ -1146,6 +1146,90 @@ def web_check(request):
                     'status': 'running',
                     'progress': heavy_task_status.get('progress', 50)
                 }
+        
+        # Legacy task handling
+        print(f"DEBUG: Current time: {current_time}")
+        
+        try:
+            # Parse different task_id formats
+            task_timestamp = None
+            
+            if task_id and task_id.startswith('task_'):
+                # Remove 'task_' prefix
+                id_part = task_id[5:]  # Remove 'task_'
+                print(f"DEBUG: ID part after removing 'task_': '{id_part}'")
+                
+                if '_' in id_part:
+                    # Format: task_TIMESTAMP_COUNTER
+                    parts = id_part.split('_')
+                    timestamp_str = parts[0]
+                    print(f"DEBUG: Timestamp string from parts: '{timestamp_str}'")
+                else:
+                    # Format: task_TIMESTAMP
+                    timestamp_str = id_part
+                    print(f"DEBUG: Timestamp string direct: '{timestamp_str}'")
+                
+                # Convert timestamp
+                if len(timestamp_str) > 10:
+                    # Milliseconds - convert to seconds
+                    task_timestamp = int(timestamp_str) / 1000.0
+                    print(f"DEBUG: Converted from milliseconds: {task_timestamp}")
+                else:
+                    # Already in seconds
+                    task_timestamp = int(timestamp_str)
+                    print(f"DEBUG: Used as seconds: {task_timestamp}")
+            
+            if task_timestamp is None:
+                if task_id:
+                    raise ValueError(f"Could not parse timestamp from task_id: {task_id}")
+                else:
+                    raise ValueError("task_id is None or empty")
+            
+            # Calculate elapsed time
+            elapsed = current_time - task_timestamp
+            print(f"DEBUG: Elapsed time: {elapsed} seconds")
+            
+            # Progress calculation over 15 seconds
+            duration = 15.0
+            if elapsed < 0:
+                # Task is in the future? Set to 0
+                elapsed = 0
+                print("DEBUG: Negative elapsed time, setting to 0")
+            
+            if elapsed < duration:
+                # Task is running
+                progress = int((elapsed / duration) * 100)
+                progress = max(1, min(99, progress))  # Keep between 1-99%
+                print(f"DEBUG: Task running - Progress: {progress}%")
+                
+                return {
+                    'status': 'running',
+                    'progress': progress,
+                    'result': None
+                }
+            else:
+                # Task completed
+                print(f"DEBUG: Task completed after {elapsed} seconds")
+                return {
+                    'status': 'completed',
+                    'progress': 100,
+                    'result': 'Zadatak uspešno završen!'
+                }
+                
+        except Exception as e:
+            print(f"DEBUG: Exception in get_task_progress: {e}")
+            print(f"DEBUG: Exception type: {type(e).__name__}")
+            
+            # Fallback: return incremental progress based on current time
+            fallback_progress = int((current_time % 15) * 6.67)  # 0-100 over 15 seconds
+            fallback_progress = max(1, min(95, fallback_progress))
+            
+            print(f"DEBUG: Using fallback progress: {fallback_progress}%")
+            return {
+                'status': 'running',
+                'progress': fallback_progress,
+                'result': None
+            }
     
     def is_heavy_task(self, user_input: str) -> bool:
         """Detektuje da li je task heavy i treba background processing"""
@@ -1255,90 +1339,6 @@ def web_check(request):
             return "\n".join([f"- {item}" for item in result])
         else:
             return str(result)
-        
-        # Legacy task handling
-        print(f"DEBUG: Current time: {current_time}")
-        
-        try:
-            # Parse different task_id formats
-            task_timestamp = None
-            
-            if task_id and task_id.startswith('task_'):
-                # Remove 'task_' prefix
-                id_part = task_id[5:]  # Remove 'task_'
-                print(f"DEBUG: ID part after removing 'task_': '{id_part}'")
-                
-                if '_' in id_part:
-                    # Format: task_TIMESTAMP_COUNTER
-                    parts = id_part.split('_')
-                    timestamp_str = parts[0]
-                    print(f"DEBUG: Timestamp string from parts: '{timestamp_str}'")
-                else:
-                    # Format: task_TIMESTAMP
-                    timestamp_str = id_part
-                    print(f"DEBUG: Timestamp string direct: '{timestamp_str}'")
-                
-                # Convert timestamp
-                if len(timestamp_str) > 10:
-                    # Milliseconds - convert to seconds
-                    task_timestamp = int(timestamp_str) / 1000.0
-                    print(f"DEBUG: Converted from milliseconds: {task_timestamp}")
-                else:
-                    # Already in seconds
-                    task_timestamp = int(timestamp_str)
-                    print(f"DEBUG: Used as seconds: {task_timestamp}")
-            
-            if task_timestamp is None:
-                if task_id:
-                    raise ValueError(f"Could not parse timestamp from task_id: {task_id}")
-                else:
-                    raise ValueError("task_id is None or empty")
-            
-            # Calculate elapsed time
-            elapsed = current_time - task_timestamp
-            print(f"DEBUG: Elapsed time: {elapsed} seconds")
-            
-            # Progress calculation over 15 seconds
-            duration = 15.0
-            if elapsed < 0:
-                # Task is in the future? Set to 0
-                elapsed = 0
-                print("DEBUG: Negative elapsed time, setting to 0")
-            
-            if elapsed < duration:
-                # Task is running
-                progress = int((elapsed / duration) * 100)
-                progress = max(1, min(99, progress))  # Keep between 1-99%
-                print(f"DEBUG: Task running - Progress: {progress}%")
-                
-                return {
-                    'status': 'running',
-                    'progress': progress,
-                    'result': None
-                }
-            else:
-                # Task completed
-                print(f"DEBUG: Task completed after {elapsed} seconds")
-                return {
-                    'status': 'completed',
-                    'progress': 100,
-                    'result': 'Zadatak uspešno završen!'
-                }
-                
-        except Exception as e:
-            print(f"DEBUG: Exception in get_task_progress: {e}")
-            print(f"DEBUG: Exception type: {type(e).__name__}")
-            
-            # Fallback: return incremental progress based on current time
-            fallback_progress = int((current_time % 15) * 6.67)  # 0-100 over 15 seconds
-            fallback_progress = max(1, min(95, fallback_progress))
-            
-            print(f"DEBUG: Using fallback progress: {fallback_progress}%")
-            return {
-                'status': 'running',
-                'progress': fallback_progress,
-                'result': None
-            }
     
     def detect_critical_threats(self, user_input):
         """Detect only CRITICAL security threats - reduced false positives"""
