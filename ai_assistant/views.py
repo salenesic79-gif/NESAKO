@@ -965,15 +965,18 @@ from django.contrib.staticfiles import finders
 
 @require_http_methods(["GET"])
 def lessons_view(request):
-    lessons = LessonLearned.objects.all().order_by('-created_at')
-    data = [{
-        "id": l.id,
-        "text": l.lesson_text,
-        "user": l.user,
-        "time": l.created_at.isoformat(),
-        "feedback": l.feedback
-    } for l in lessons]
-    return JsonResponse({"lessons": data})
+    try:
+        lessons = LessonLearned.objects.all().order_by('-created_at')
+        data = [{
+            "id": l.id,
+            "text": l.lesson_text,
+            "user": l.user,
+            "time": l.created_at.isoformat(),
+            "feedback": l.feedback
+        } for l in lessons]
+        return JsonResponse({"lessons": data})
+    except Exception as e:
+        return JsonResponse({"error": str(e), "lessons": []}, status=500)
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -1065,9 +1068,26 @@ def web_check(request):
     try:
         search_url = f"https://www.google.com/search?q={urllib.parse.quote(q)}"
         content = DeepSeekAPI().get_web_content(search_url)
-        return JsonResponse({"query": q, "source": search_url, "content": content})
+        
+        # If content is empty or error, provide a better response
+        if not content or content.startswith("Error:"):
+            return JsonResponse({
+                "query": q, 
+                "source": search_url, 
+                "content": "Nisam uspeo da pronađem informacije za ovaj upit. Molim pokušajte drugačiju pretragu.",
+                "error": "No content found"
+            })
+            
+        return JsonResponse({
+            "query": q, 
+            "source": search_url, 
+            "content": content[:2000] + "..." if len(content) > 2000 else content
+        })
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse({
+            "error": str(e),
+            "content": "Došlo je do greške pri pretrazi. Molim pokušajte ponovo kasnije."
+        }, status=500)
     
     def get_task_progress(self, task_id):
         """Track progress of long-running tasks with heavy task processor integration"""

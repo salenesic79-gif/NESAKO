@@ -906,15 +906,15 @@ Možete koristiti:
                 const data = await response.json();
                 
                 if (data.error) {
-                    addAIMessage(`❌ Greška pri pretrazi: ${data.error}`);
+                    addAIMessage(`❌ Greška pri pretrazi: ${data.error}`, false);
                 } else if (data.content) {
-                    addAIMessage(`🌐 Rezultati pretrage za "${input}":\n\n${data.content}\n\nIzvor: ${data.source || 'Google Search'}`);
+                    addAIMessage(`🌐 Rezultati pretrage za "${input}":\n\n${data.content}\n\nIzvor: ${data.source || 'Google Search'}\n\n⚠️ *Ovi podaci su sa interneta i mogu biti neažurni*`, false);
                 } else {
-                    addAIMessage('Nisam pronašao relevantne rezultate za vaš upit.');
+                    addAIMessage('Nisam pronašao relevantne rezultate za vaš upit.', false);
                 }
             } catch (e) {
                 console.error('Web check error:', e);
-                addAIMessage('❌ Greška u komunikaciji sa serverom prilikom pretrage.');
+                addAIMessage('❌ Greška u komunikaciji sa serverom prilikom pretrage.', false);
             } finally {
                 updateStatus('Spreman za rad', false);
             }
@@ -923,39 +923,56 @@ Možete koristiti:
         // UI za prikaz lessons_learned
         async function showLessonsUI() {
             try {
-                const res = await fetch('/lessons');
+                updateStatus('Učitavam naučene lekcije...', true);
+                const res = await fetch('/lessons/');
                 const data = await res.json();
                 showLessons(data);
             } catch (e) {
-                alert('Greška pri učitavanju naučenog.');
+                console.error('Error loading lessons:', e);
+                addAIMessage('❌ Greška pri učitavanju naučenog. Proverite konzolu za detalje.', false);
+            } finally {
+                updateStatus('Spreman za rad', false);
             }
         }
 
         function showLessons(data) {
-            if (!data || !data.lessons) return alert('Nema podataka.');
-            const lines = data.lessons.map(l => `${l.text} (${l.user || 'private'}) [${l.feedback}]\n`+
-                `  • Feedback: `+
-                `[Tačno] onclick: sendFeedback(${l.id}, 'correct') | `+
-                `[Netačno] onclick: sendFeedback(${l.id}, 'incorrect')`
-            );
-            alert(lines.join("\n---\n"));
+            if (!data || !data.lessons || data.lessons.length === 0) {
+                addAIMessage('📚 Trenutno nema sačuvanih naučenih lekcija.', false);
+                return;
+            }
+            
+            let lessonsMessage = '📚 **NAUČENE LEKCIJE:**\n\n';
+            data.lessons.forEach((lesson, index) => {
+                lessonsMessage += `${index + 1}. "${lesson.text}"\n`;
+                lessonsMessage += `   👤 ${lesson.user || 'private'} • ${new Date(lesson.time).toLocaleDateString('sr-RS')}\n`;
+                lessonsMessage += `   📊 Feedback: ${lesson.feedback || 'nema'}\n\n`;
+            });
+            
+            lessonsMessage += 'ℹ️ *Ovo su lekcije koje je AI naučio tokom razgovora*';
+            
+            addAIMessage(lessonsMessage, false);
         }
 
         async function sendFeedback(lessonId, verdict) {
             try {
-                const res = await fetch(`/lessons/${lessonId}/feedback`, {
+                const response = await fetch(`/lessons/${lessonId}/feedback/`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCSRFToken()
+                    },
                     body: JSON.stringify({ feedback: verdict })
                 });
-                const data = await res.json();
+                
+                const data = await response.json();
                 if (data.status === 'ok') {
-                    alert('Hvala na povratnoj informaciji.');
+                    addAIMessage('✅ Hvala na povratnoj informaciji!', false);
                 } else {
-                    alert('Greška: ' + (data.error || 'nepoznato'));
+                    addAIMessage('❌ Greška pri slanju feedback-a: ' + (data.error || 'nepoznato'), false);
                 }
             } catch (e) {
-                alert('Greška pri slanju feedback-a.');
+                console.error('Feedback error:', e);
+                addAIMessage('❌ Greška u komunikaciji sa serverom.', false);
             }
         }
         
