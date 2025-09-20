@@ -154,15 +154,38 @@ class NESAKOChatbot:
         if any(keyword in user_input.lower() for keyword in self.sports_keywords):
             return "Za sportske informacije moram koristiti web pretragu. Pokušajte ponovo."
 
+        # Enhanced system prompt with strict anti-hallucination instructions
+        enhanced_system_prompt = self.system_prompt + """
+        
+STRICT ANTI-HALLUCINATION PROTOCOL:
+1. NIKAD NE IZMIŠLJAJ INFORMACIJE - koristi samo ono što znaš iz pouzdanih izvora
+2. Ako nisi 100% siguran u odgovor, reci "Nisam siguran" ili "Ne mogu da potvrdim"
+3. Nikad ne daj tačne brojeve, datume ili činjenice bez apsolutne sigurnosti
+4. Za sve trenutne informacije koristi web pretragu
+5. Ako nemaš pristup ažurnim podacima, reci to jasno
+6. Preferiraj oprez i tačnost preko brzine odgovora
+7. Ne pretpostavljaj - traži dodatne informacije ako je potrebno
+8. Koristi samo verifikovane podatke iz sistemskog konteksta
+
+ODGOVORI U SKLADU SA PROTOKOLOM:
+- "Trenutno nemam pristup ažurnim informacijama o tome"
+- "Nisam siguran u tačnost te informacije"
+- "Molim vas proverite na zvaničnim izvorima za najtačnije podatke"
+- "Ne mogu da potvrdim ove informacije bez web pretrage"
+- "Za tačne i ažurne podatke, preporučujem direktnu proveru"
+"""
+
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": self.system_prompt},
+                {"role": "system", "content": enhanced_system_prompt},
                 {"role": "user", "content": user_input}
             ],
-            "temperature": 0.1,
+            "temperature": 0.1,  # Very low temperature to reduce creativity
             "max_tokens": 300,
-            "top_p": 0.3
+            "top_p": 0.1,  # Very low top_p to focus on most likely responses
+            "frequency_penalty": 0.5,  # Penalize frequent phrases to reduce repetition
+            "presence_penalty": 0.5  # Penalize new concepts to stay on topic
         }
 
         headers = {
@@ -181,26 +204,55 @@ class NESAKOChatbot:
                         .get('content', '')
                     )
                     if content:
+                        # Validate response doesn't contain hallucinations
+                        validated_content = self.validate_response_for_hallucinations(content, user_input)
+                        
                         # učenje iz konverzacije
                         try:
-                            self.learn_from_conversation(user_input, content)
-                            self.memory.store_conversation(user_input, content)
+                            self.learn_from_conversation(user_input, validated_content)
+                            self.memory.store_conversation(user_input, validated_content)
                         except Exception:
                             pass
-                        return content
+                        return validated_content
                 # ako API ne odgovori korektno
-                return "Trenutno ne mogu da dohvatim odgovor od AI servisa. Pokušajte ponovo."
+                return "Trenutno ne mogu da dohvatim odgovor od AI servisa. Molim pokušajte ponovo."
             else:
-                # Fallback bez API ključa
-                simulated = "Ovo je simulirani odgovor. Implementirajte stvarni API poziv ili postavite DEEPSEEK_API_KEY."
+                # Fallback bez API ključa - beži od izmišljanja
+                fallback_response = "Trenutno nemam pristup AI servisu za generisanje odgovora. Molim pokušajte ponovo kasnije ili koristite web pretragu za tačne informacije."
                 try:
-                    self.learn_from_conversation(user_input, simulated)
-                    self.memory.store_conversation(user_input, simulated)
+                    self.learn_from_conversation(user_input, fallback_response)
+                    self.memory.store_conversation(user_input, fallback_response)
                 except Exception:
                     pass
-                return simulated
+                return fallback_response
         except Exception as e:
-            return f"Došlo je do greške: {str(e)}"
+            return f"Trenutno ne mogu da obradim vaš zahtev zbog tehničke greške: {str(e)}"
+
+    def validate_response_for_hallucinations(self, response: str, user_input: str) -> str:
+        """
+        Validates the response for potential hallucinations and adds disclaimers
+        """
+        # List of phrases that indicate uncertainty or potential hallucinations
+        uncertain_phrases = [
+            'verovatno', 'možda', 'pretpostavljam', 'rekao bih', 'čini mi se',
+            'mislim da', 'vrv', 'moguće', 'potencijalno', 'izgleda'
+        ]
+        
+        # Check if response contains uncertain language
+        response_lower = response.lower()
+        has_uncertainty = any(phrase in response_lower for phrase in uncertain_phrases)
+        
+        # Check for specific factual claims that might be hallucinations
+        factual_keywords = ['je', 'su', 'ima', 'bio', 'bila', 'bilo', 'tačno', 'sigurno']
+        has_factual_claims = any(keyword in response_lower for keyword in factual_keywords)
+        
+        # Add disclaimer if there's uncertainty or factual claims without verification
+        if has_uncertainty or has_factual_claims:
+            disclaimer = "\n\n⚠️ *Molim proverite ove informacije na zvaničnim izvorima - ovo je AI generisan odgovor koji može sadržati netačnosti*"
+            if disclaimer not in response:
+                response += disclaimer
+        
+        return response
 
     def remember_instruction(self, instruction: str) -> str:
         key = f"instruction_{hash(instruction)}"
