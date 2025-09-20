@@ -4,9 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#16213e">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="NESAKO AI">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="{% static 'icons/icon-192x192.png' %}">
+    <link rel="icon" sizes="192x192" href="{% static 'icons/icon-192x192.png' %}">
+    <link rel="icon" sizes="512x512" href="{% static 'icons/icon-512x512.png' %}">
     <title>NESAKO AI Asistent</title>
     <style>
         * {
@@ -457,6 +462,29 @@
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
+
+        .image-paste-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(102, 126, 234, 0.9);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 25px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .image-paste-overlay.visible {
+            opacity: 1;
+            pointer-events: all;
+        }
         
         .char-counter {
             position: absolute;
@@ -892,23 +920,34 @@ Možete koristiti:
             ];
         }
 
-        // Proveri na webu - koristi backend /web_check
+        // Istraži na webu - koristi DeepSeek sa web pretragom
         async function checkOnWeb() {
             const input = document.getElementById('user-input').value.trim();
             if (!input) return alert('Unesite upit za pretragu.');
             
             // Add user message to show what we're searching for
-            addMessage(`🌐 Pretražujem web za: "${input}"`, true);
+            addMessage(`🌐 Istražujem web za: "${input}"`, true);
             
-            updateStatus('Pretražujem web...', true);
+            updateStatus('Istražujem web...', true);
             try {
-                const response = await fetch(`/web_check?q=${encodeURIComponent(input)}`);
+                const response = await fetch('/api/chat/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        instruction: `🌐 WEB PRETRAGA: "${input}" - daj mi najtačnije i najažurnije informacije sa interneta`,
+                        conversation_history: conversationHistory.slice(-5),
+                        web_search: true
+                    })
+                });
+                
                 const data = await response.json();
                 
                 if (data.error) {
                     addAIMessage(`❌ Greška pri pretrazi: ${data.error}`, false);
-                } else if (data.content) {
-                    addAIMessage(`🌐 Rezultati pretrage za "${input}":\n\n${data.content}\n\nIzvor: ${data.source || 'Google Search'}\n\n⚠️ *Ovi podaci su sa interneta i mogu biti neažurni*`, false);
+                } else if (data.response) {
+                    addAIMessage(data.response, false);
                 } else {
                     addAIMessage('Nisam pronašao relevantne rezultate za vaš upit.', false);
                 }
@@ -920,7 +959,7 @@ Možete koristiti:
             }
         }
 
-        // UI za prikaz lessons_learned
+        // UI za prikaz lessons_learned - poslednjih 10 najkraće
         async function showLessonsUI() {
             try {
                 updateStatus('Učitavam naučene lekcije...', true);
@@ -941,14 +980,21 @@ Možete koristiti:
                 return;
             }
             
-            let lessonsMessage = '📚 **NAUČENE LEKCIJE:**\n\n';
-            data.lessons.forEach((lesson, index) => {
-                lessonsMessage += `${index + 1}. "${lesson.text}"\n`;
-                lessonsMessage += `   👤 ${lesson.user || 'private'} • ${new Date(lesson.time).toLocaleDateString('sr-RS')}\n`;
-                lessonsMessage += `   📊 Feedback: ${lesson.feedback || 'nema'}\n\n`;
+            // Sort by time and take last 10
+            const recentLessons = [...data.lessons]
+                .sort((a, b) => new Date(b.time) - new Date(a.time))
+                .slice(0, 10);
+            
+            let lessonsMessage = '📚 **POSLEDNJIH 10 NAUČENIH LEKCIJA:**\n\n';
+            recentLessons.forEach((lesson, index) => {
+                // Extract only the most important part
+                const shortText = lesson.text.length > 100 
+                    ? lesson.text.substring(0, 100) + '...' 
+                    : lesson.text;
+                lessonsMessage += `${index + 1}. ${shortText}\n`;
             });
             
-            lessonsMessage += 'ℹ️ *Ovo su lekcije koje je AI naučio tokom razgovora*';
+            lessonsMessage += '\nℹ️ *Sinhronizovano na svim uređajima*';
             
             addAIMessage(lessonsMessage, false);
         }
@@ -1635,17 +1681,88 @@ Možete koristiti:
         }
 
         // Event listeners
-        document.getElementById('user-input').addEventListener('input', function() {
+        const userInput = document.getElementById('user-input');
+        const imagePasteOverlay = document.getElementById('image-paste-overlay');
+        
+        userInput.addEventListener('input', function() {
             updateCharCounter();
             autoResize();
         });
         
-        document.getElementById('user-input').addEventListener('keydown', function(e) {
+        userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
             }
         });
+
+        // Handle image paste
+        userInput.addEventListener('paste', function(e) {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.type.indexOf('image') !== -1) {
+                    e.preventDefault();
+                    const blob = item.getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        processImageUpload(blob, event.target.result);
+                    };
+                    reader.readAsDataURL(blob);
+                    break;
+                }
+            }
+        });
+
+        // Handle image drag and drop
+        userInput.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            imagePasteOverlay.classList.add('visible');
+        });
+
+        userInput.addEventListener('dragleave', function() {
+            imagePasteOverlay.classList.remove('visible');
+        });
+
+        userInput.addEventListener('drop', function(e) {
+            e.preventDefault();
+            imagePasteOverlay.classList.remove('visible');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type.startsWith('image/')) {
+                processImageUpload(files[0]);
+            }
+        });
+
+        // Process image upload
+        async function processImageUpload(file, dataUrl = null) {
+            updateStatus('Obrađujem sliku...', true);
+            
+            const formData = new FormData();
+            formData.append('images', file);
+            formData.append('instruction', userInput.value || 'Analiziraj ovu sliku');
+            
+            try {
+                const response = await fetch('/api/chat/', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    addAIMessage(data.response, false);
+                    // Clear input after successful image processing
+                    userInput.value = '';
+                    updateCharCounter();
+                    autoResize();
+                } else {
+                    addAIMessage('❌ Greška pri obradi slike: ' + (data.error || 'Nepoznata greška'), false);
+                }
+            } catch (error) {
+                addAIMessage('❌ Greška u komunikaciji pri obradi slike', false);
+            } finally {
+                updateStatus('Spreman za rad', false);
+            }
+        }
         
         // Close history menu when clicking outside
         document.addEventListener('click', function(e) {
@@ -1710,27 +1827,12 @@ Možete koristiti:
         
         generateTaskItems();
         
-        // PWA Service Worker (disabled to prevent cache of old JS)
-        const ENABLE_PWA = false;
+        // PWA Service Worker - enabled with better caching
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                if (ENABLE_PWA) {
-                    navigator.serviceWorker.register('/static/sw.js')
-                        .then(() => console.log('ServiceWorker registration successful'))
-                        .catch(err => console.log('ServiceWorker registration failed: ', err));
-                } else {
-                    // Unregister existing service workers to avoid stale cached assets
-                    navigator.serviceWorker.getRegistrations()
-                        .then(registrations => {
-                            if (registrations && registrations.length > 0) {
-                                Promise.all(registrations.map(r => r.unregister()))
-                                    .then(() => {
-                                        console.log('Service workers unregistered');
-                                    });
-                            }
-                        })
-                        .catch(() => {});
-                }
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then(() => console.log('ServiceWorker registration successful'))
+                    .catch(err => console.log('ServiceWorker registration failed: ', err));
             });
         }
         
@@ -1977,11 +2079,41 @@ Možete koristiti:
             });
         }
         
-        // Modified sendMessage function to handle complex tasks
+        // Modified sendMessage function to handle complex tasks and self-modification
         const originalSendMessage = sendMessage;
         sendMessage = function() {
             const message = document.getElementById('user-input').value.trim();
             if (!message) return;
+            
+            // Check for self-modification requests
+            const modificationKeywords = ['promeni kod', 'izmeni izgled', 'sampromena', 'self-modify', 'update code', 'change appearance'];
+            if (modificationKeywords.some(keyword => message.toLowerCase().includes(keyword))) {
+                addMessage(message, true);
+                updateStatus('Izvršavam samopromenu...', true);
+                
+                // Send special instruction for self-modification
+                fetch('/api/chat/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        instruction: `🚀 SAMOPROMENA: ${message} - imam dozvolu da menjam svoj kod i izgled`,
+                        conversation_history: conversationHistory,
+                        allow_self_modification: true
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    handleApiResponse(data);
+                })
+                .catch(error => {
+                    addAIMessage('❌ Greška pri samopromeni', false);
+                    updateStatus('Greška', false);
+                });
+                
+                return;
+            }
             
             // Check if this is a complex task
             const complexKeywords = ['kreiraj', 'napravi', 'build', 'create', 'develop', 'implementiraj', 'aplikacija', 'app', 'website', 'web', 'sistem', 'database', 'api', 'backend', 'frontend', 'full stack', 'projekt'];
@@ -2006,9 +2138,6 @@ Možete koristiti:
                         toggleTaskPanel();
                     }
                 }
-                
-                // Do NOT clear the input for complex tasks so korisnik vidi svoj zahtev
-                // document.getElementById('user-input').value = '';
                 
                 return;
             }
