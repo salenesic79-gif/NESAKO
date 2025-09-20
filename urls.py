@@ -8,6 +8,7 @@ from ai_assistant.views import (
     lessons_view,
     update_feedback,
     web_check,
+    health_view,
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
@@ -32,6 +33,8 @@ urlpatterns = [
     path('lessons/<int:lesson_id>/feedback', csrf_exempt(update_feedback), name='update_feedback'),
     # Web check endpoint
     path('web_check', csrf_exempt(web_check), name='web_check'),
+    # Health endpoint
+    path('health', health_view, name='health'),
 ]
 
 # Serve static files in development and production

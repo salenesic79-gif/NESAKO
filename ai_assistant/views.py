@@ -16,6 +16,7 @@ from django.shortcuts import redirect
 from django.conf import settings
 from django.middleware.csrf import get_token
 from bs4 import BeautifulSoup
+from pathlib import Path
 import base64
 from typing import Any, Dict, List, Optional
 from .memory_manager import PersistentMemoryManager
@@ -930,6 +931,53 @@ def update_feedback(request, lesson_id):
         return JsonResponse({"error": "Lesson not found"}, status=404)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+@require_http_methods(["GET"])
+def health_view(request):
+    """Health endpoint: proverava statiku (manifest.json), env varijable i DB dostupnost."""
+    import os
+    from django.conf import settings as dj_settings
+    from django.contrib.staticfiles import finders
+    from .models import Conversation
+
+    # Provera manifest.json preko staticfiles findera i preko STATIC_ROOT
+    manifest_found = False
+    manifest_path = None
+    try:
+        manifest_path = finders.find('manifest.json')
+        if not manifest_path:
+            # fallback na filesystem
+            candidate = (dj_settings.STATIC_ROOT / 'manifest.json') if isinstance(dj_settings.STATIC_ROOT, Path) else os.path.join(dj_settings.STATIC_ROOT, 'manifest.json')
+            if os.path.exists(candidate):
+                manifest_path = str(candidate)
+        manifest_found = bool(manifest_path)
+    except Exception:
+        manifest_found = False
+
+    # Provera env varijabli
+    env_info = {
+        'DEEPSEEK_API_KEY': bool(dj_settings.DEEPSEEK_API_KEY),
+        'SERPAPI_API_KEY': bool(os.getenv('SERPAPI_API_KEY')),
+        'DEBUG': bool(dj_settings.DEBUG),
+    }
+
+    # Provera DB konekcije
+    db_ok = True
+    db_error = None
+    try:
+        _ = Conversation.objects.count()
+    except Exception as e:
+        db_ok = False
+        db_error = str(e)
+
+    return JsonResponse({
+        'status': 'ok' if (manifest_found and db_ok) else 'degraded',
+        'static_manifest_found': manifest_found,
+        'static_manifest_path': manifest_path,
+        'env': env_info,
+        'db_ok': db_ok,
+        'db_error': db_error,
+    })
 
 @csrf_exempt
 @require_http_methods(["GET"])
