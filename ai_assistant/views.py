@@ -723,7 +723,7 @@ class DeepSeekAPI(View):
                     'timestamp': current_time.isoformat(),
                     'mode': 'definitivni_asistent',
                     'tools_used': bool(tools_output or serp_snippets),
-                    'context_aware': bool(context_summary) if 'context_summary' in locals() else False,
+                    'context_aware': False,
                     'response_length': len(ai_response),
                     'conversation_id': conversation_id,
                     'memory_active': True
