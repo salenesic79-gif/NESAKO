@@ -79,6 +79,11 @@ else:
         }
     }
 
+# Authentication
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 # Internationalization
 LANGUAGE_CODE = 'sr-rs'
 TIME_ZONE = 'Europe/Belgrade'
@@ -112,6 +117,7 @@ if not DEBUG:
     pass
 
 # Session settings - jedinstveni naziv
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 SESSION_COOKIE_NAME = 'nesako_ai_sessionid'
 CSRF_COOKIE_NAME = 'nesako_ai_csrftoken'
 SESSION_COOKIE_AGE = 86400  # 24 hours
