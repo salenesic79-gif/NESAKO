@@ -896,14 +896,25 @@ Možete koristiti:
         async function checkOnWeb() {
             const input = document.getElementById('user-input').value.trim();
             if (!input) return alert('Unesite upit za pretragu.');
+            
+            // Add user message to show what we're searching for
+            addMessage(`🌐 Pretražujem web za: "${input}"`, true);
+            
             updateStatus('Pretražujem web...', true);
             try {
-                const res = await fetch(`/web_check?q=${encodeURIComponent(input)}`);
-                const data = await res.json();
-                const msg = data.content ? data.content : (data.error || 'Nema podataka');
-                addAIMessage(`Nisam siguran, ali evo šta sam našao na internetu:\n${msg}`);
+                const response = await fetch(`/web_check?q=${encodeURIComponent(input)}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    addAIMessage(`❌ Greška pri pretrazi: ${data.error}`);
+                } else if (data.content) {
+                    addAIMessage(`🌐 Rezultati pretrage za "${input}":\n\n${data.content}\n\nIzvor: ${data.source || 'Google Search'}`);
+                } else {
+                    addAIMessage('Nisam pronašao relevantne rezultate za vaš upit.');
+                }
             } catch (e) {
-                addAIMessage('Greška pri pretrazi weba.');
+                console.error('Web check error:', e);
+                addAIMessage('❌ Greška u komunikaciji sa serverom prilikom pretrage.');
             } finally {
                 updateStatus('Spreman za rad', false);
             }

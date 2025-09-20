@@ -660,17 +660,28 @@ class DeepSeekAPI(View):
                     additional_data += "\nNAJNOVIJE VESTI:\n"
                     for item in news:
                         additional_data += f"- {item['title']}\n"
+            # Initialize serp_snippets to avoid reference errors
+            serp_snippets = []
+            
             # Use SerpAPI-backed search for current/info queries (reduces halucinacije)
             if any(word in user_input.lower() for word in ['pretraži', 'pronađi', 'informacije o', 'šta je', 'rezultat', 'utakmica', 'danas', 'sada']):
-                serp_snippets = self.nesako.search_web(user_input)
-                if serp_snippets:
-                    additional_data += "\nINFORMACIJE SA WEBA (SerpAPI):\n"
-                    for snippet in serp_snippets:
-                        additional_data += f"- {snippet}\n"
+                try:
+                    serp_snippets = self.nesako.search_web(user_input)
+                    if serp_snippets:
+                        additional_data += "\nINFORMACIJE SA WEBA (SerpAPI):\n"
+                        for snippet in serp_snippets:
+                            additional_data += f"- {snippet}\n"
+                except Exception as e:
+                    print(f"SerpAPI search error: {e}")
+                    additional_data += "\n⚠️ Nisam uspeo da pristupim web pretrazi. Molim pokušajte ponovo.\n"
             
             # NESAKO centralno rutiranje za sportska pitanja (obavezna web pretraga)
             if any(keyword in user_input.lower() for keyword in getattr(self.nesako, 'sports_keywords', [])):
-                ai_response = self.nesako.get_response(user_input)
+                try:
+                    ai_response = self.nesako.get_response(user_input)
+                except Exception as e:
+                    print(f"NESAKO response error: {e}")
+                    ai_response = "Trenutno ne mogu da pristupim ažurnim informacijama. Molim vas proverite na zvaničnim sportskim sajtovima."
 
                 # Persist konverzacije i učenje
                 try:

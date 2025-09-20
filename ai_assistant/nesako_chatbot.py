@@ -106,10 +106,16 @@ class NESAKOChatbot:
 
     # --- Novo: formatiranje i glavna logika odgovora ---
     def format_search_results(self, results: List[str]) -> str:
-        response = "Na osnovu web pretrage, evo informacija:\n\n"
+        if not results:
+            return "Nisam pronašao relevantne rezultate pretrage."
+        
+        response = "Rezultati web pretrage:\n\n"
         for i, result in enumerate(results, 1):
+            # Limit each result to prevent overly long responses
+            if len(result) > 200:
+                result = result[:197] + "..."
             response += f"{i}. {result}\n"
-        response += "\nIzvor: Google Search API"
+        response += "\nIzvor: Google Search API\n\n⚠️ *Ove informacije mogu biti neažurne ili netačne*"
         return response
 
     def get_response(self, user_input: str) -> str:
@@ -117,21 +123,31 @@ class NESAKOChatbot:
         if any(keyword in user_input.lower() for keyword in self.sports_keywords):
             results = self.search_web(user_input)
             if results:
-                return self.format_search_results(results)
+                # Add disclaimer to make it clear this is from web search
+                formatted = self.format_search_results(results)
+                return f"🔍 **Informacije sa weba (možda nisu ažurne):**\n\n{formatted}\n\n⚠️ *Molim proverite na zvaničnim izvorima za najtačnije informacije*"
             return "Trenutno nemam pristup ažurnim informacijama. Molim vas proverite na zvaničnim sportskim sajtovima."
 
         # Naučeni odgovori (pattern-based)
         learned = self.memory.get_learned_response(user_input)
         if learned:
-            return learned
+            # Add disclaimer for learned responses
+            return f"{learned}\n\nℹ️ *Ovo je naučeni odgovor baziran na prethodnim interakcijama*"
 
         # Direktna memorija po ključu (ako korisnik kaže "zapamti ...")
         direct_mem = self.memory.retrieve_memory(user_input)
         if direct_mem:
-            return direct_mem
+            # Add disclaimer for memory-based responses
+            return f"{direct_mem}\n\nℹ️ *Ovo je zapamćena informacija iz prethodnih razgovora*"
 
         # Generalni odgovor preko DeepSeek (ako je konfigurisan) ili fallback
-        return self.generate_response(user_input)
+        response = self.generate_response(user_input)
+        
+        # Add accuracy disclaimer to AI responses
+        if "nisam siguran" not in response.lower() and "nemam" not in response.lower():
+            response += "\n\nℹ️ *Ovo je AI generisan odgovor - molim proverite informacije ako su kritične*"
+        
+        return response
 
     def generate_response(self, user_input: str) -> str:
         # Blokiraj sportska pitanja bez pretrage
