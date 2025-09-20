@@ -999,12 +999,18 @@ Možete koristiti:
             else if (length > 40000) counter.classList.add('warning');
         }
         
-        // Format timestamp
-        function formatTime(date) {
-            return date.toLocaleTimeString('sr-RS', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-            });
+        // Format timestamp (robust)
+        function formatTime(input) {
+            let d = input instanceof Date ? input : new Date(input);
+            if (isNaN(d.getTime())) d = new Date();
+            try {
+                return d.toLocaleTimeString('sr-RS', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (e) {
+                return `${('0'+d.getHours()).slice(-2)}:${('0'+d.getMinutes()).slice(-2)}`;
+            }
         }
         
         // Toggle history menu

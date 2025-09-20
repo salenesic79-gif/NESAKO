@@ -14,6 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 from django.conf import settings
 from django.conf.urls.static import static
+import os
 
 def favicon_view(request):
     return HttpResponse(status=204)  # No Content
@@ -41,4 +42,11 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
 else:
+    # Serve from STATIC_ROOT (collected static)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    # Additionally serve directly from STATICFILES_DIRS[0] as fallback (defensive in Render)
+    try:
+        if settings.STATICFILES_DIRS and os.path.isdir(settings.STATICFILES_DIRS[0]):
+            urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
+    except Exception:
+        pass

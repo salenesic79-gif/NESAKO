@@ -38,6 +38,17 @@ class DeepSeekAPI(View):
         self.file_operations = FileOperationsManager()
         # NESAKO Chatbot with ORM-backed memory and SerpAPI integration
         self.nesako = NESAKOChatbot()
+
+    # --- Safe stub: UI expects threat detection method ---
+    def detect_critical_threats(self, text: str) -> list:
+        """Stub for UI compatibility. Returns empty list (no threats)."""
+        try:
+            if not text:
+                return []
+            # Here we could add real detection; for now, return [] to avoid UI errors
+            return []
+        except Exception:
+            return []
         
     def dispatch(self, request, *args, **kwargs):
         # Check authentication for API access
