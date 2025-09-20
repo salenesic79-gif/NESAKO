@@ -723,7 +723,7 @@ class DeepSeekAPI(View):
                     'timestamp': current_time.isoformat(),
                     'mode': 'definitivni_asistent',
                     'tools_used': bool(tools_output or serp_snippets),
-                    'context_aware': bool(context_summary),
+                    'context_aware': bool(context_summary) if 'context_summary' in locals() else False,
                     'response_length': len(ai_response),
                     'conversation_id': conversation_id,
                     'memory_active': True
@@ -1077,7 +1077,7 @@ def web_check(request):
         print(f"DEBUG: get_task_progress called with task_id: '{task_id}'")
         
         # Check if it's a heavy task
-        if task_id.startswith('heavy_'):
+        if task_id and task_id.startswith('heavy_'):
             heavy_task_status = task_processor.get_task_status(task_id)
             
             if heavy_task_status['status'] == 'not_found':
@@ -1243,7 +1243,7 @@ def web_check(request):
             # Parse different task_id formats
             task_timestamp = None
             
-            if task_id.startswith('task_'):
+            if task_id and task_id.startswith('task_'):
                 # Remove 'task_' prefix
                 id_part = task_id[5:]  # Remove 'task_'
                 print(f"DEBUG: ID part after removing 'task_': '{id_part}'")
@@ -1269,7 +1269,10 @@ def web_check(request):
                     print(f"DEBUG: Used as seconds: {task_timestamp}")
             
             if task_timestamp is None:
-                raise ValueError(f"Could not parse timestamp from task_id: {task_id}")
+                if task_id:
+                    raise ValueError(f"Could not parse timestamp from task_id: {task_id}")
+                else:
+                    raise ValueError("task_id is None or empty")
             
             # Calculate elapsed time
             elapsed = current_time - task_timestamp
