@@ -60,6 +60,18 @@ class DeepSeekAPI(View):
             return True
         except Exception:
             return False
+
+    # --- Safe stub: heavy task detector used in post() flow
+    def is_heavy_task(self, user_input: str) -> bool:
+        """Lightweight heuristic to detect heavy tasks; safe default False."""
+        try:
+            if not user_input:
+                return False
+            text = user_input.lower()
+            keywords = ['analyze repo', 'code analysis', 'large file', 'process project', 'rollback', 'deploy']
+            return any(k in text for k in keywords)
+        except Exception:
+            return False
         
     def dispatch(self, request, *args, **kwargs):
         # Check authentication for API access
@@ -925,6 +937,8 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
 
 # ============== PUBLIC JSON ENDPOINTS ==============
 from django.views.decorators.http import require_http_methods
+from django.http import FileResponse
+from django.contrib.staticfiles import finders
 
 @require_http_methods(["GET"])
 def lessons_view(request):
@@ -951,6 +965,23 @@ def update_feedback(request, lesson_id):
         return JsonResponse({"status": "ok"})
     except LessonLearned.DoesNotExist:
         return JsonResponse({"error": "Lesson not found"}, status=404)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@require_http_methods(["GET"])
+def manifest_view(request):
+    """Serve manifest.json explicitly as a safety net when static route fails."""
+    try:
+        path = finders.find('manifest.json')
+        if not path:
+            # Fallback to STATIC_ROOT
+            from django.conf import settings as dj_settings
+            candidate = (dj_settings.STATIC_ROOT / 'manifest.json') if isinstance(dj_settings.STATIC_ROOT, Path) else os.path.join(dj_settings.STATIC_ROOT, 'manifest.json')
+            if os.path.exists(candidate):
+                path = str(candidate)
+        if not path:
+            return JsonResponse({"error": "manifest.json not found"}, status=404)
+        return FileResponse(open(path, 'rb'), content_type='application/manifest+json')
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
