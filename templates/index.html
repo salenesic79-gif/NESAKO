@@ -921,40 +921,41 @@ Možete koristiti:
             ];
         }
 
-        // Istraži na webu - koristi DeepSeek sa web pretragom
+        // Istraži na webu - koristi pouzdane izvore
         async function checkOnWeb() {
             const input = document.getElementById('user-input').value.trim();
             if (!input) return alert('Unesite upit za pretragu.');
             
             // Add user message to show what we're searching for
-            addMessage(`🌐 Istražujem web za: "${input}"`, true);
+            addMessage(`🌐 Istražujem pouzdane izvore za: "${input}"`, true);
             
-            updateStatus('Istražujem web...', true);
+            updateStatus('Istražujem pouzdane izvore...', true);
             try {
-                const response = await fetch('/api/chat/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        instruction: `🌐 WEB PRETRAGA: "${input}" - daj mi najtačnije i najažurnije informacije sa interneta`,
-                        conversation_history: conversationHistory.slice(-5),
-                        web_search: true
-                    })
-                });
+                // Use the web_check endpoint which uses Google search
+                const response = await fetch(`/web_check?q=${encodeURIComponent(input)}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 
                 const data = await response.json();
                 
                 if (data.error) {
                     addAIMessage(`❌ Greška pri pretrazi: ${data.error}`, false);
-                } else if (data.response) {
-                    addAIMessage(data.response, false);
+                } else if (data.content) {
+                    // Format the response better
+                    let formattedResponse = `🔍 **REZULTATI PRETRAGE ZA "${input}":**\n\n`;
+                    formattedResponse += data.content + '\n\n';
+                    formattedResponse += `🌐 *Izvor: ${data.source || 'Google Search'}*\n`;
+                    formattedResponse += '⚠️ *Molim proverite informacije na zvaničnim sajtovima*';
+                    
+                    addAIMessage(formattedResponse, false);
                 } else {
                     addAIMessage('Nisam pronašao relevantne rezultate za vaš upit.', false);
                 }
             } catch (e) {
                 console.error('Web check error:', e);
-                addAIMessage('❌ Greška u komunikaciji sa serverom prilikom pretrage.', false);
+                addAIMessage('❌ Greška u komunikaciji sa serverom prilikom pretrage: ' + e.message, false);
             } finally {
                 updateStatus('Spreman za rad', false);
             }
