@@ -878,8 +878,8 @@ Možete koristiti:
                 <button id="send-btn" onclick="sendMessage()" title="Pošalji poruku (Enter)">
                     ➤
                 </button>
-                <button class="history-btn" onclick="checkOnWeb()" title="Proveri na webu" style="background:#fff;color:#333;border:1px solid #e0e0f0;border-radius:20px;padding:8px 12px;">
-                    🌐 Proveri na webu
+                <button class="history-btn" onclick="checkOnWeb()" title="Istraži na webu" style="background:#fff;color:#333;border:1px solid #e0e0f0;border-radius:20px;padding:6px 10px;font-size:12px;margin-top:5px;">
+                    🌐 Istraži
                 </button>
             </div>
         </div>
@@ -1697,21 +1697,45 @@ Možete koristiti:
             }
         });
 
-        // Handle image paste
+        // Handle image paste with better debugging
         userInput.addEventListener('paste', function(e) {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            for (let item of items) {
+            console.log('Paste event detected');
+            const clipboardData = e.clipboardData || e.originalEvent.clipboardData;
+            if (!clipboardData) {
+                console.log('No clipboard data');
+                return;
+            }
+            
+            const items = clipboardData.items;
+            console.log('Clipboard items:', items.length);
+            
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                console.log('Item type:', item.type);
+                
                 if (item.type.indexOf('image') !== -1) {
                     e.preventDefault();
+                    console.log('Image found in clipboard');
                     const blob = item.getAsFile();
-                    const reader = new FileReader();
-                    reader.onload = function(event) {
-                        processImageUpload(blob, event.target.result);
-                    };
-                    reader.readAsDataURL(blob);
-                    break;
+                    if (blob) {
+                        const reader = new FileReader();
+                        reader.onload = function(event) {
+                            console.log('Image loaded, processing upload');
+                            processImageUpload(blob, event.target.result);
+                        };
+                        reader.onerror = function(error) {
+                            console.error('FileReader error:', error);
+                            addAIMessage('❌ Greška pri čitanju slike', false);
+                        };
+                        reader.readAsDataURL(blob);
+                    } else {
+                        console.error('Could not get file from clipboard item');
+                        addAIMessage('❌ Ne mogu da pristupim slici iz clipboard-a', false);
+                    }
+                    return;
                 }
             }
+            console.log('No image found in clipboard');
         });
 
         // Handle image drag and drop
@@ -1734,9 +1758,11 @@ Možete koristiti:
             }
         });
 
-        // Process image upload
+        // Process image upload with better error handling and user feedback
         async function processImageUpload(file, dataUrl = null) {
-            updateStatus('Obrađujem sliku...', true);
+            // Show immediate feedback
+            addMessage(`📸 Učitavam sliku: ${file.name}`, true);
+            updateStatus('Analiziram sliku...', true);
             
             const formData = new FormData();
             formData.append('images', file);
@@ -1748,6 +1774,10 @@ Možete koristiti:
                     body: formData
                 });
                 
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
                 if (data.status === 'success') {
                     addAIMessage(data.response, false);
@@ -1756,10 +1786,11 @@ Možete koristiti:
                     updateCharCounter();
                     autoResize();
                 } else {
-                    addAIMessage('❌ Greška pri obradi slike: ' + (data.error || 'Nepoznata greška'), false);
+                    throw new Error(data.error || 'Nepoznata greška');
                 }
             } catch (error) {
-                addAIMessage('❌ Greška u komunikaciji pri obradi slike', false);
+                console.error('Image upload error:', error);
+                addAIMessage('❌ Greška pri obradi slike: ' + error.message, false);
             } finally {
                 updateStatus('Spreman za rad', false);
             }
