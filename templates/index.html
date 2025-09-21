@@ -110,12 +110,14 @@
             display: none;
             position: absolute;
             right: 0;
+            top: 100%;
             background: white;
-            min-width: 200px;
+            min-width: 250px;
             border-radius: 10px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             z-index: 1000;
             overflow: hidden;
+            margin-top: 5px;
         }
         
         .hamburger-content.show {
@@ -129,6 +131,10 @@
             color: #333;
             font-size: 14px;
             border-bottom: 1px solid #f0f0f0;
+            width: 100%;
+            text-align: left;
+            border: none;
+            background: none;
         }
         
         .hamburger-item:hover {
@@ -779,17 +785,17 @@
             <div class="header-content" style="height: 100%; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; width: 100%;">
                 <h1 style="font-size: 20px; margin: 0; line-height: 70px;">🤖 NESAKO AI</h1>
                 <div class="header-menu" style="position: relative; display: flex; align-items: center; height: 100%;">
-                    <button id="hamburger-menu" class="hamburger-btn" style="font-size: 24px; padding: 8px 16px; margin: 0;">
+                    <button id="hamburger-menu" class="hamburger-btn" style="font-size: 24px; padding: 8px 16px; margin: 0;" onclick="toggleHamburgerMenu()">
                         ☰
                     </button>
-                    <div id="dropdown-menu" class="dropdown-content" style="position: fixed; top: 70px; left: 0; right: 0; width: 100%; max-width: 100%; border-radius: 0; z-index: 10000;">
-                        <button id="show-lessons" class="dropdown-item">Prikaži naučeno</button>
-                        <button id="clear-chat" class="dropdown-item">Obriši razgovor</button>
-                        <button id="export-chat" class="dropdown-item">Izvezi razgovor</button>
-                        <button id="sports-betting-btn" class="dropdown-item" onclick="openSportsBetting()">Sportske prognoze</button>
-                        <button id="settings-btn" class="dropdown-item">Podešavanja</button>
-                        <button id="self-modify-btn" class="dropdown-item" onclick="enableSelfModification()">Samopromena</button>
-                        <button id="logout-btn" class="dropdown-item">Logout</button>
+                    <div id="hamburger-content" class="hamburger-content">
+                        <button class="hamburger-item" onclick="showLessonsUI()">📚 Prikaži naučeno</button>
+                        <button class="hamburger-item" onclick="clearChat()">🗑️ Obriši razgovor</button>
+                        <button class="hamburger-item" onclick="exportChat()">💾 Izvezi razgovor</button>
+                        <button class="hamburger-item" onclick="openSportsBetting()">⚽ Sportske prognoze</button>
+                        <button class="hamburger-item" onclick="showSettings()">⚙️ Podešavanja</button>
+                        <button class="hamburger-item" onclick="enableSelfModification()">🔄 Samopromena</button>
+                        <button class="hamburger-item" onclick="logout()">🚪 Logout</button>
                     </div>
                 </div>
             </div>
@@ -1000,6 +1006,7 @@ Možete koristiti:
                 }
                 const data = await res.json();
                 showLessons(data);
+                toggleHamburgerMenu();
             } catch (e) {
                 console.error('Error loading lessons:', e);
                 addAIMessage('❌ Greška pri učitavanju naučenog. Proverite konzolu za detalje.', false);
@@ -1621,6 +1628,7 @@ Možete koristiti:
                     window.location.href = '/login/';
                 });
             }
+            toggleHamburgerMenu();
         }
         
         // Quick access function
@@ -1849,6 +1857,60 @@ Možete koristiti:
                 historyMenu.style.display = 'none';
             }
         });
+
+        // Hamburger menu functions
+        function clearChat() {
+            if (confirm('Da li ste sigurni da želite da obrišete razgovor?')) {
+                conversationHistory = [];
+                document.getElementById('chat-messages').innerHTML = '';
+                messageCount = 1;
+                sessionStartTime = Date.now();
+                updateStats();
+                addMessage('Razgovor je obrisan. Kako mogu da vam pomognem?', false);
+                toggleHamburgerMenu();
+            }
+        }
+
+        function exportChat() {
+            const chatContent = conversationHistory.map(msg => 
+                `${msg.isUser ? 'KORISNIK' : 'AI'}: ${msg.content}`
+            ).join('\n\n');
+            
+            const blob = new Blob([chatContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `nesako-chat-${new Date().toISOString().slice(0, 10)}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            addMessage('💾 Razgovor je izvežen!', false);
+            toggleHamburgerMenu();
+        }
+
+        function showSettings() {
+            const settings = prompt('Podešavanja:\n\n1. Auto-otvaranje task panela (trenutno: ' + autoOpenTaskPanel + ')\n2. Kompleksni taskovi (trenutno: ' + enableComplexTasks + ')\n\nUnesite broj podešavanja za promenu:');
+            if (settings === '1') {
+                autoOpenTaskPanel = !autoOpenTaskPanel;
+                addMessage('⚙️ Auto-otvaranje task panela: ' + (autoOpenTaskPanel ? 'UKLJUČENO' : 'ISKLJUČENO'), false);
+            } else if (settings === '2') {
+                enableComplexTasks = !enableComplexTasks;
+                addMessage('⚙️ Kompleksni taskovi: ' + (enableComplexTasks ? 'UKLJUČENO' : 'ISKLJUČENO'), false);
+            }
+            toggleHamburgerMenu();
+        }
+
+        function openSportsBetting() {
+            addMessage('⚽ Sportske prognoze - Molim unesite vaš upit za sportske prognoze (npr. "Ko je favorit u utakmici Partizan - Zvezda?")', true);
+            toggleHamburgerMenu();
+        }
+
+        function enableSelfModification() {
+            addMessage('🔄 Samopromena aktivirana! Sada možete tražiti promene koda i izgleda.', false);
+            toggleHamburgerMenu();
+        }
         
         // Initialize
         initializeSessions();
