@@ -86,23 +86,57 @@
             text-align: right;
         }
         
-        .history-dropdown {
+        .hamburger-menu {
             position: relative;
+            display: inline-block;
         }
         
-        .history-btn {
+        .hamburger-btn {
             background: rgba(255,255,255,0.2);
             border: none;
             color: white;
             padding: 8px 12px;
             border-radius: 15px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 18px;
             transition: background 0.3s;
         }
         
-        .history-btn:hover {
+        .hamburger-btn:hover {
             background: rgba(255,255,255,0.3);
+        }
+        
+        .hamburger-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            background: white;
+            min-width: 200px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            z-index: 1000;
+            overflow: hidden;
+        }
+        
+        .hamburger-content.show {
+            display: block;
+        }
+        
+        .hamburger-item {
+            padding: 12px 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+            color: #333;
+            font-size: 14px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .hamburger-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .hamburger-item:last-child {
+            border-bottom: none;
         }
         
         .history-menu {
@@ -618,6 +652,23 @@
                 width: 8px;
                 height: 8px;
             }
+            
+            /* Hamburger menu adjustments for mobile */
+            .hamburger-content {
+                min-width: 180px;
+                right: 0;
+            }
+            
+            .hamburger-item {
+                padding: 15px;
+                font-size: 16px;
+            }
+            
+            /* Adjust textarea height */
+            #user-input {
+                min-height: 50px !important;
+                font-size: 16px;
+            }
         }
         
         .quick-access-btn {
@@ -738,31 +789,27 @@
             </div>
             
             <div class="header-right">
-                <div class="history-dropdown">
-                    <button class="history-btn" onclick="toggleHistory()">
-                        📋 Istorija
+                <div class="hamburger-menu">
+                    <button class="hamburger-btn" onclick="toggleHamburgerMenu()">
+                        ☰
                     </button>
-                    <div class="history-menu" id="history-menu">
-                        <div class="history-item" onclick="loadHistorySession(0)">
-                            <div class="history-title">Početna sesija</div>
-                            <div class="history-preview">Dobrodošli u NESAKO AI...</div>
-                            <div class="history-time">Upravo</div>
+                    <div class="hamburger-content" id="hamburger-content">
+                        <div class="hamburger-item" onclick="toggleHistory(); toggleHamburgerMenu()">
+                            📋 Istorija
+                        </div>
+                        <div class="hamburger-item" onclick="quickAccess(); toggleHamburgerMenu()">
+                            🚀 Brzi pristup
+                        </div>
+                        <div class="hamburger-item" onclick="showLessonsUI(); toggleHamburgerMenu()">
+                            📚 Prikaži naučeno
+                        </div>
+                        <div class="hamburger-item" onclick="toggleTaskPanel(); toggleHamburgerMenu()">
+                            📝 Zadaci
+                        </div>
+                        <div class="hamburger-item" onclick="logout(); toggleHamburgerMenu()">
+                            🚪 Izloguj se
                         </div>
                     </div>
-                </div>
-                <div class="header-buttons">
-                    <button id="quick-access-btn" class="quick-access-btn" onclick="quickAccess()" title="Brzi pristup">
-                        🚀 Brzi pristup
-                    </button>
-                    <button class="history-btn" onclick="showLessonsUI()" style="background:#fff;color:#333;border:1px solid #e0e0f0;border-radius:20px;padding:8px 12px;">
-                        📚 Prikaži naučeno
-                    </button>
-                    <button class="history-btn" onclick="logout()" style="background: rgba(220,53,69,0.2); margin-left: 10px;">
-                        🚪 Izloguj se
-                    </button>
-                    <button class="history-btn" onclick="toggleTaskPanel()" style="background: rgba(102,126,234,0.2); margin-left: 10px;">
-                        📝 Zadaci
-                    </button>
                 </div>
             </div>
         </div>
@@ -871,6 +918,7 @@ Možete koristiti:
 • Shift+Enter za novi red, Enter za slanje" 
                     maxlength="50000" 
                     rows="1"
+                    style="min-height: 60px;"
                 ></textarea>
                 <div class="char-counter" id="char-counter">0/50,000</div>
             </div>
@@ -966,6 +1014,9 @@ Možete koristiti:
             try {
                 updateStatus('Učitavam naučene lekcije...', true);
                 const res = await fetch('/lessons/');
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
                 const data = await res.json();
                 showLessons(data);
             } catch (e) {
@@ -981,23 +1032,27 @@ Možete koristiti:
                 addAIMessage('📚 Trenutno nema sačuvanih naučenih lekcija.', false);
                 return;
             }
-            
+        
             // Sort by time and take last 10
             const recentLessons = [...data.lessons]
                 .sort((a, b) => new Date(b.time) - new Date(a.time))
                 .slice(0, 10);
-            
+        
             let lessonsMessage = '📚 **POSLEDNJIH 10 NAUČENIH LEKCIJA:**\n\n';
             recentLessons.forEach((lesson, index) => {
                 // Extract only the most important part
                 const shortText = lesson.text.length > 100 
                     ? lesson.text.substring(0, 100) + '...' 
                     : lesson.text;
-                lessonsMessage += `${index + 1}. ${shortText}\n`;
+                lessonsMessage += `${index + 1}. ${shortText}`;
+                if (lesson.time) {
+                    lessonsMessage += ` (${new Date(lesson.time).toLocaleDateString('sr-RS')})`;
+                }
+                lessonsMessage += '\n';
             });
-            
+        
             lessonsMessage += '\nℹ️ *Sinhronizovano na svim uređajima*';
-            
+        
             addAIMessage(lessonsMessage, false);
         }
 
@@ -1790,12 +1845,26 @@ Možete koristiti:
             }
         }
         
-        // Close history menu when clicking outside
+        // Toggle hamburger menu
+        function toggleHamburgerMenu() {
+            const hamburgerContent = document.getElementById('hamburger-content');
+            hamburgerContent.classList.toggle('show');
+        }
+        
+        // Close hamburger menu when clicking outside
         document.addEventListener('click', function(e) {
+            const hamburgerMenu = document.querySelector('.hamburger-menu');
+            const hamburgerContent = document.getElementById('hamburger-content');
+            
+            if (!hamburgerMenu.contains(e.target)) {
+                hamburgerContent.classList.remove('show');
+            }
+            
+            // Also close history menu
             const historyDropdown = document.querySelector('.history-dropdown');
             const historyMenu = document.getElementById('history-menu');
             
-            if (!historyDropdown.contains(e.target)) {
+            if (historyDropdown && !historyDropdown.contains(e.target)) {
                 historyMenu.style.display = 'none';
             }
         });
