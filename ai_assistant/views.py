@@ -98,50 +98,100 @@ class DeepSeekAPI(View):
         try:
             # Parse GitHub URL
             if "github.com" in repo_url:
-                parts = repo_url.split("/")
+                # Remove any query parameters and fragments
+                clean_url = repo_url.split('?')[0].split('#')[0]
+                parts = clean_url.rstrip('/').split("/")
+                if len(parts) < 2:
+                    return "❌ Nevalidan GitHub URL format"
+                
                 owner = parts[-2]
                 repo = parts[-1].replace(".git", "")
             else:
-                return "Invalid GitHub URL format"
+                return "❌ Nevalidan GitHub URL - mora biti github.com link"
             
             github_token = os.environ.get('GITHUB_TOKEN')
-            headers = {}
+            headers = {
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'NESAKO-AI-Assistant'
+            }
             if github_token:
                 headers['Authorization'] = f'token {github_token}'
             
+            # First, get repository info to verify it exists
+            repo_api_url = f"https://api.github.com/repos/{owner}/{repo}"
+            repo_response = requests.get(repo_api_url, headers=headers, timeout=15)
+            
+            if repo_response.status_code != 200:
+                return f"❌ GitHub repozitorijum nije pronađen ili nije javan: {owner}/{repo}"
+            
+            repo_data = repo_response.json()
+            
             # Get repository contents
             api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
-            response = requests.get(api_url, headers=headers, timeout=10)
+            response = requests.get(api_url, headers=headers, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
                 
                 if isinstance(data, list):
-                    # Directory listing
+                    # Directory listing - get up to 20 items
                     files = []
                     for item in data:
                         files.append({
                             'name': item['name'],
                             'type': item['type'],
                             'size': item.get('size', 0),
-                            'path': item['path']
+                            'path': item['path'],
+                            'html_url': item.get('html_url', '')
                         })
-                    return {'type': 'directory', 'files': files}
+                    return {
+                        'type': 'directory', 
+                        'files': files[:20],  # Limit to 20 files
+                        'repo_info': {
+                            'name': repo_data.get('name', repo),
+                            'full_name': repo_data.get('full_name', f"{owner}/{repo}"),
+                            'description': repo_data.get('description', ''),
+                            'stars': repo_data.get('stargazers_count', 0),
+                            'forks': repo_data.get('forks_count', 0),
+                            'language': repo_data.get('language', ''),
+                            'updated_at': repo_data.get('updated_at', '')
+                        }
+                    }
                 else:
                     # Single file
                     if data['type'] == 'file':
-                        content = base64.b64decode(data['content']).decode('utf-8')
-                        return {
-                            'type': 'file',
-                            'name': data['name'],
-                            'content': content[:10000],  # Limit to 10k chars
-                            'size': data['size']
-                        }
+                        # For text files, get content
+                        if data['size'] < 50000:  # Limit to 50KB
+                            content = base64.b64decode(data['content']).decode('utf-8', errors='ignore')
+                            return {
+                                'type': 'file',
+                                'name': data['name'],
+                                'content': content[:15000],  # Limit to 15k chars
+                                'size': data['size'],
+                                'path': data['path'],
+                                'html_url': data.get('html_url', ''),
+                                'repo_info': {
+                                    'name': repo_data.get('name', repo),
+                                    'full_name': repo_data.get('full_name', f"{owner}/{repo}"),
+                                    'description': repo_data.get('description', '')
+                                }
+                            }
+                        else:
+                            return {
+                                'type': 'file_too_large',
+                                'name': data['name'],
+                                'size': data['size'],
+                                'path': data['path'],
+                                'html_url': data.get('html_url', ''),
+                                'message': 'Fajl je prevelik za prikaz (preko 50KB)'
+                            }
             
-            return f"GitHub API Error: {response.status_code}"
+            return f"❌ GitHub API greška: {response.status_code} - {response.text}"
             
+        except requests.exceptions.Timeout:
+            return "❌ GitHub API timeout - repozitorijum je prevelik ili server ne odgovara"
         except Exception as e:
-            return f"GitHub Error: {str(e)}"
+            return f"❌ GitHub greška: {str(e)}"
 
     def analyze_code_structure(self, code_content, language):
         """Tool: Analiza strukture koda"""
@@ -281,6 +331,43 @@ class DeepSeekAPI(View):
         tools_output = ""
         status_updates = []
         
+        # Detektuj GitHub URL-ove direktno u tekstu
+        github_url_pattern = r'https?://github\.com/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+'
+        github_matches = re.findall(github_url_pattern, user_input)
+        
+        for github_url in github_matches:
+            status_updates.append(f"🔗 Pronađen GitHub repozitorijum: {github_url}")
+            status_updates.append("📂 Analiziram GitHub repozitorijum...")
+            
+            content = self.get_github_content(github_url)
+            if isinstance(content, dict):
+                # Formatiraj lepši izlaz za GitHub
+                tools_output += f"\n🎯 **GITHUB REPO ANALIZA: {content.get('repo_info', {}).get('full_name', github_url)}**\n\n"
+                
+                # Dodaj osnovne informacije o repozitorijumu
+                repo_info = content.get('repo_info', {})
+                if repo_info:
+                    tools_output += f"📋 **OPIS:** {repo_info.get('description', 'Nema opisa')}\n"
+                    tools_output += f"⭐ **ZVEZDICE:** {repo_info.get('stars', 0)}\n"
+                    tools_output += f"🍴 **FORKOVI:** {repo_info.get('forks', 0)}\n"
+                    tools_output += f"💻 **JEZIK:** {repo_info.get('language', 'Nepoznato')}\n"
+                    tools_output += f"🔄 **AŽURIRANO:** {repo_info.get('updated_at', 'Nepoznato')}\n\n"
+                
+                # Prikaz sadržaja
+                if content.get('type') == 'directory':
+                    tools_output += "📁 **SADRŽAJ REPOZITORIJUMA:**\n"
+                    for file in content.get('files', [])[:10]:  # Prikaz prvih 10 fajlova
+                        tools_output += f"• {file['name']} ({file['type']}, {file['size']} bytes)\n"
+                elif content.get('type') == 'file':
+                    tools_output += f"📄 **FAJL:** {content.get('name')}\n"
+                    tools_output += f"📏 **VELIČINA:** {content.get('size')} bytes\n"
+                    tools_output += f"```\n{content.get('content', 'Nema sadržaja')}\n```\n"
+                
+                status_updates.append("✅ GitHub repozitorijum uspešno analiziran")
+            else:
+                tools_output += f"\n❌ **GREŠKA PRI ANALIZI GITHUB REPO:**\n{content}\n"
+                status_updates.append("❌ Greška pri analizi GitHub repozitorijuma")
+        
         # Detektuj tool pozive u JSON formatu
         json_pattern = r'\{[^{}]*"tool"[^{}]*\}'
         matches = re.findall(json_pattern, user_input)
@@ -295,7 +382,7 @@ class DeepSeekAPI(View):
                     url = tool_call.get('url')
                     if url:
                         content = self.get_web_content(url)
-                        tools_output += f"\nWEB CONTENT FROM {url}:\n{content}\n"
+                        tools_output += f"\n🌐 **WEB SADRŽAJ SA {url}:**\n{content}\n"
                         status_updates.append("✅ Web sadržaj preuzet")
                         
                 elif tool_name == 'get_github_content':
@@ -304,7 +391,7 @@ class DeepSeekAPI(View):
                     path = tool_call.get('path', '')
                     if repo_url:
                         content = self.get_github_content(repo_url, path)
-                        tools_output += f"\nGITHUB CONTENT ({repo_url}/{path}):\n{json.dumps(content, indent=2)}\n"
+                        tools_output += f"\n🔗 **GITHUB SADRŽAJ ({repo_url}/{path}):**\n{json.dumps(content, indent=2, ensure_ascii=False)}\n"
                         status_updates.append("✅ GitHub sadržaj analiziran")
                         
                 elif tool_name == 'analyze_code':
@@ -313,7 +400,7 @@ class DeepSeekAPI(View):
                     language = tool_call.get('language', 'python')
                     if code:
                         analysis = self.analyze_code_structure(code, language)
-                        tools_output += f"\nCODE ANALYSIS ({language}):\n{json.dumps(analysis, indent=2)}\n"
+                        tools_output += f"\n🔍 **ANALIZA KODA ({language}):**\n{json.dumps(analysis, indent=2, ensure_ascii=False)}\n"
                         status_updates.append("✅ Kod analiziran")
                         
                 elif tool_name == 'get_sports_stats':
@@ -323,7 +410,7 @@ class DeepSeekAPI(View):
                     data_points = tool_call.get('data_points', [])
                     if sport and event_id:
                         stats = self.get_sports_stats(sport, event_id, data_points)
-                        tools_output += f"\nSPORTS STATS ({sport} - {event_id}):\n{json.dumps(stats, indent=2)}\n"
+                        tools_output += f"\n⚽ **SPORTSKE STATISTIKE ({sport} - {event_id}):**\n{json.dumps(stats, indent=2, ensure_ascii=False)}\n"
                         status_updates.append("✅ Sportske statistike preuzete")
                         
                 elif tool_name == 'run_code_sandbox':
@@ -332,7 +419,7 @@ class DeepSeekAPI(View):
                     code = tool_call.get('code')
                     if language and code:
                         result = self.run_code_sandbox(language, code)
-                        tools_output += f"\nCODE EXECUTION ({language}):\n{result}\n"
+                        tools_output += f"\n💻 **IZVRŠAVANJE KODA ({language}):**\n{result}\n"
                         status_updates.append("✅ Kod izvršen")
                         
             except json.JSONDecodeError:
@@ -768,17 +855,23 @@ class DeepSeekAPI(View):
                 "Content-Type": "application/json"
             }
             
-            # Enhanced system message with better context understanding
-            system_message = f"""Ti si NESAKO AI - ULTIMATIVNI ASISTENT sa naprednim razumevanjem konteksta.
+            # Enhanced system message with transparent GitHub capabilities
+            system_message = f"""Ti si NESAKO AI - ULTIMATIVNI ASISTENT sa pravim GitHub integracijama.
 
 TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
 
-🎯 KLJUČNE SPOSOBNOSTI:
-• DUBOKO RAZUMEVANJE KONTEKSTA - analiziram celu istoriju razgovora
-• INTELIGENTNA WEB PRETRAGA - reformulišem upite za bolje rezultate  
-• PROAKTIVNO REŠAVANJE - predviđam potrebe i automatski delujem
-• KONTINUIRANO UČENJE - pamti sve interakcije i prilagodavam se
-• PRODUCTION-READY REŠENJA - uvek generišem optimizovan, siguran kod
+🎯 REALNE SPOSOBNOSTI:
+• ✅ GitHub integracija - Mogu da analiziram JAVNE repozitorijume
+• ✅ Web pretraga - Koristim Google pretragu za informacije
+• ✅ Analiza koda - Čitanje i analiza programskog koda
+• ✅ Sportske statistike - Osnovne sportske informacije
+• ✅ Izvršavanje koda - Python/JavaScript u sandbox okruženju
+
+🚫 OGRANIČENJA:
+• ❌ Ne mogu da pristupim PRIVATNIM repozitorijumima
+• ❌ Ne mogu da menjam kod na GitHub-u (samo read-only)
+• ❌ Za veće repozitorijume prikazujem samo prvih 10-20 fajlova
+• ❌ Fajlovi veći od 50KB se ne prikazuju u potpunosti
 
 🧠 KONTEKST RAZGOVORA:
 {context_summary}
@@ -786,24 +879,21 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
 📊 KORISNIČKI PROFIL (NAUČENO):
 {user_context}
 
-🔧 DOSTUPNI ALATI:
-• GitHub integracija • Web pretraga • Analiza koda • Sportske statistike
-• Izvršavanje koda • File operacije • AI moduli • Heavy task processing
-
-💡 STRATEGIJA ODGOVORA:
-1. DUBOKA ANALIZA KONTEKSTA - koristim celu istoriju razgovora
-2. PROAKTIVNO PREDVIĐANJE - anticipiram šta korisnik zaista želi
-3. REFORMULACIJA UPITA - za web pretragu koristim optimizovane termine
-4. PERSONALIZOVANI ODGOVOR - prilagođavam se korisnikovom stilu
-5. PROVERA TAČNOSTI - uvek proveravam informacije pre nego što ih podelim
-
-{command_output if command_output else ''}
+🔧 DETEKTOVANI ALATI U RAZGOVORU:
+{command_output if command_output else '• Nema detektovanih alata'}
 {module_output if module_output else ''}
 {file_output if file_output else ''}
 {tools_output if tools_output else ''}
 {additional_data}
 
-🎯 FOKUS: Razumem šta korisnik zaista želi, ne samo šta je rekao. Koristim celu konverzaciju za bolje odgovore."""
+💡 STRATEGIJA:
+1. Budi iskren o svojim mogućnostima i ograničenjima
+2. Ako nešto ne možeš da uradiš, reci to jasno
+3. Koristi GitHub API samo za javne repozitorijume
+4. Prikazuj samo relevantne informacije
+5. Uvek daj tačne i proverljive odgovore
+
+🎯 CILJ: Pružam realne, proverljive informacije bez obećavanja nemogućeg."""
 
             # API call to DeepSeek with enhanced error handling
             payload = {
