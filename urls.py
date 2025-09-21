@@ -10,6 +10,7 @@ from ai_assistant.views import (
     web_check,
     health_view,
     manifest_view,
+    git_sync_view,  # Dodajemo novi view
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
@@ -30,6 +31,8 @@ urlpatterns = [
     path('', ProtectedTemplateView.as_view(template_name='index.html'), name='home'),
     # AI Assistant API (protected)
     path('api/chat/', csrf_exempt(DeepSeekAPI.as_view()), name='deepseek_chat'),
+    # Git sync endpoint
+    path('api/git-sync/', csrf_exempt(git_sync_view), name='git_sync'),
     # Lessons endpoints
     path('lessons', lessons_view, name='lessons'),
     path('lessons/<int:lesson_id>/feedback', csrf_exempt(update_feedback), name='update_feedback'),

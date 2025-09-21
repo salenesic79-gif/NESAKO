@@ -1237,6 +1237,74 @@ def web_check(request):
             "content": "Došlo je do greške pri pretrazi. Molim pokušajte ponovo kasnije.",
             "status": "error"
         }, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def git_sync_view(request):
+    """Endpoint za Git sinhronizaciju"""
+    try:
+        # Provera autentikacije
+        if not request.session.get('authenticated'):
+            return JsonResponse({'error': 'Neautorizovan pristup'}, status=401)
+        
+        data = json.loads(request.body)
+        operation = data.get('operation', 'status')
+        
+        # Apsolutna putanja do projekta
+        project_root = settings.BASE_DIR
+        
+        # Generiši odgovarajuće komande
+        commands = []
+        if operation == 'push':
+            commands = [
+                'git add .',
+                'git commit -m "Auto-commit from NESAKO AI"',
+                'git push origin main'
+            ]
+        elif operation == 'pull':
+            commands = ['git pull origin main']
+        elif operation == 'status':
+            commands = ['git status']
+        elif operation == 'sync':
+            commands = [
+                'git add .',
+                'git commit -m "Auto-sync from NESAKO AI"',
+                'git pull origin main',
+                'git push origin main'
+            ]
+        else:
+            return JsonResponse({'error': 'Nepoznata operacija'}, status=400)
+        
+        # Izvrši komande
+        results = []
+        for command in commands:
+            try:
+                result = subprocess.run(
+                    command.split(),
+                    capture_output=True,
+                    text=True,
+                    cwd=project_root,  # Koristi apsolutnu putanju
+                    timeout=30
+                )
+                if result.returncode == 0:
+                    results.append(f"✅ {command}: {result.stdout}")
+                else:
+                    results.append(f"❌ {command}: {result.stderr}")
+            except subprocess.TimeoutExpired:
+                results.append(f"⏰ {command}: Timeout")
+            except Exception as e:
+                results.append(f"❌ {command}: {str(e)}")
+        
+        return JsonResponse({
+            'success': True,
+            'result': "\n".join(results),
+            'operation': operation
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
     
     def get_task_progress(self, task_id):
         """Track progress of long-running tasks with heavy task processor integration"""

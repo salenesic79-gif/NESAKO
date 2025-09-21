@@ -52,8 +52,9 @@ staticfiles/
 ehthumbs.db
 Thumbs.db
 
-# Database
-nesako_ai_assistant.sqlite3
+# Database files - don't track database files in version control
+*.sqlite3
+*.db
 
 # Logs
 *.log
