@@ -775,40 +775,21 @@
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="header-left">
-                <div class="chat-stats">
-                    <div id="message-count">Poruke: 1</div>
-                    <div id="session-time">Vreme: 0m</div>
-                </div>
-            </div>
-            
-            <div class="header-center">
-                <h1>🤖 NESAKO AI</h1>
-                <p>Definitivni Asistent - GitHub Enabled</p>
-            </div>
-            
-            <div class="header-right">
-                <div class="hamburger-menu">
-                    <button class="hamburger-btn" onclick="toggleHamburgerMenu()">
+        <div class="header" style="height: 70px; min-height: 70px;">
+            <div class="header-content" style="height: 100%; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <h1 style="font-size: 20px; margin: 0; line-height: 70px;">🤖 NESAKO AI</h1>
+                <div class="header-menu" style="position: relative; display: flex; align-items: center; height: 100%;">
+                    <button id="hamburger-menu" class="hamburger-btn" style="font-size: 24px; padding: 8px 16px; margin: 0;">
                         ☰
                     </button>
-                    <div class="hamburger-content" id="hamburger-content">
-                        <div class="hamburger-item" onclick="toggleHistory(); toggleHamburgerMenu()">
-                            📋 Istorija
-                        </div>
-                        <div class="hamburger-item" onclick="quickAccess(); toggleHamburgerMenu()">
-                            🚀 Brzi pristup
-                        </div>
-                        <div class="hamburger-item" onclick="showLessonsUI(); toggleHamburgerMenu()">
-                            📚 Prikaži naučeno
-                        </div>
-                        <div class="hamburger-item" onclick="toggleTaskPanel(); toggleHamburgerMenu()">
-                            📝 Zadaci
-                        </div>
-                        <div class="hamburger-item" onclick="logout(); toggleHamburgerMenu()">
-                            🚪 Izloguj se
-                        </div>
+                    <div id="dropdown-menu" class="dropdown-content" style="position: fixed; top: 70px; left: 0; right: 0; width: 100%; max-width: 100%; border-radius: 0; z-index: 10000;">
+                        <button id="show-lessons" class="dropdown-item">Prikaži naučeno</button>
+                        <button id="clear-chat" class="dropdown-item">Obriši razgovor</button>
+                        <button id="export-chat" class="dropdown-item">Izvezi razgovor</button>
+                        <button id="sports-betting-btn" class="dropdown-item" onclick="openSportsBetting()">Sportske prognoze</button>
+                        <button id="settings-btn" class="dropdown-item">Podešavanja</button>
+                        <button id="self-modify-btn" class="dropdown-item" onclick="enableSelfModification()">Samopromena</button>
+                        <button id="logout-btn" class="dropdown-item">Logout</button>
                     </div>
                 </div>
             </div>
