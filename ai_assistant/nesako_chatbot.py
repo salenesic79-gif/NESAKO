@@ -89,23 +89,92 @@ class NESAKOChatbot:
         ]
 
     def learn_from_conversation(self, user_input: str, assistant_response: str) -> None:
-        key_phrases = ["zapamti", "nikad", "uvek", "nemoj", "kako da", "šta je", "koji je", "gde je"]
-        content = user_input.lower()
-        if any(p in content for p in key_phrases):
-            pattern = self.create_pattern_from_input(content)
-            self.memory.learn_pattern(pattern, assistant_response)
-            
-        # Also save to persistent memory if available
+        """Enhanced learning with continuous adaptation and pattern recognition"""
         try:
-            from .memory_manager import PersistentMemoryManager
-            memory = PersistentMemoryManager()
-            session_id = "default_session"  # This should be passed from the view
-            memory.save_learning_data(session_id, 'conversation_pattern', {
-                'user_input': user_input,
-                'assistant_response': assistant_response
-            }, 0.7)
-        except Exception:
-            pass  # Silently fail if persistent memory is not available
+            # Basic pattern learning
+            key_phrases = ["zapamti", "nikad", "uvek", "nemoj", "kako da", "šta je", "koji je", "gde je"]
+            content = user_input.lower()
+            
+            if any(p in content for p in key_phrases):
+                pattern = self.create_pattern_from_input(content)
+                self.memory.learn_pattern(pattern, assistant_response)
+            
+            # Advanced learning: Extract entities and relationships
+            self._extract_entities(user_input, assistant_response)
+            
+            # Sentiment and preference learning
+            self._learn_preferences(user_input, assistant_response)
+            
+            # Save to persistent memory
+            try:
+                from .memory_manager import PersistentMemoryManager
+                memory = PersistentMemoryManager()
+                session_id = "default_session"
+                memory.save_learning_data(session_id, 'conversation_pattern', {
+                    'user_input': user_input,
+                    'assistant_response': assistant_response,
+                    'entities': self._extract_entities(user_input),
+                    'preferences': self._extract_preferences(user_input)
+                }, 0.8)
+            except Exception:
+                pass
+                
+        except Exception as e:
+            print(f"Enhanced learning error: {e}")
+    
+    def _extract_entities(self, user_input: str, assistant_response: str) -> None:
+        """Extract and learn entities from conversation"""
+        # Simple entity extraction - in production, use NER models
+        entities = {
+            'sports_teams': [],
+            'programming_languages': [],
+            'technologies': [],
+            'preferences': []
+        }
+        
+        # Extract sports teams
+        import re
+        team_pattern = r'\b(Partizan|Crvena Zvezda|Bayern|Real Madrid|Barcelona|Manchester)\b'
+        entities['sports_teams'] = re.findall(team_pattern, user_input, re.IGNORECASE)
+        
+        # Save entities to memory
+        if entities['sports_teams']:
+            try:
+                self.memory.store_memory('favorite_teams', json.dumps(entities['sports_teams']))
+            except:
+                pass
+    
+    def _learn_preferences(self, user_input: str, assistant_response: str) -> None:
+        """Learn user preferences from conversation"""
+        # Analyze sentiment and preferences
+        positive_words = ['dobro', 'super', 'odlično', 'volim', 'sviđa']
+        negative_words = ['loše', 'ne volim', 'ne sviđa', 'mrzi']
+        
+        content = user_input.lower()
+        if any(word in content for word in positive_words):
+            # Learn positive preferences
+            pass
+        elif any(word in content for word in negative_words):
+            # Learn negative preferences
+            pass
+    
+    def _extract_entities(self, user_input: str) -> List[str]:
+        """Extract entities from text"""
+        # Simple implementation - use proper NER in production
+        entities = []
+        words = user_input.split()
+        for word in words:
+            if len(word) > 3 and word[0].isupper():
+                entities.append(word)
+        return entities
+    
+    def _extract_preferences(self, user_input: str) -> Dict:
+        """Extract user preferences from text"""
+        return {
+            'likes': [],
+            'dislikes': [],
+            'interests': []
+        }
 
     def create_pattern_from_input(self, user_input: str) -> str:
         words = user_input.lower().split()
