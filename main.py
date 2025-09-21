@@ -28,9 +28,9 @@ if __name__ == '__main__':
     # Check for custom port argument
     if len(sys.argv) > 1:
         port = sys.argv[1]
-        argv.append(f'0.0.0.0:{port}')
+        argv.append(f'127.0.0.1:{port}')
     else:
-        argv.append('0.0.0.0:8015')
+        argv.append('127.0.0.1:8080')
     
     # Execute Django management command
     execute_from_command_line(argv)

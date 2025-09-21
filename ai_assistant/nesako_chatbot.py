@@ -50,7 +50,8 @@ class NESAKOSearch:
 
     def search_web(self, query: str) -> List[str]:
         if not self.api_key:
-            return []
+            print("SERPAPI_API_KEY nije konfigurisan - web pretraga onemogućena")
+            return ["Web pretraga je trenutno onemogućena. Molim kontaktirajte administratora."]
         try:
             params = {
                 'q': query,
@@ -62,8 +63,9 @@ class NESAKOSearch:
             if 'organic_results' in data:
                 return [item.get('snippet', '') for item in data.get('organic_results', [])[:3] if item.get('snippet')]
             return []
-        except Exception:
-            return []
+        except Exception as e:
+            print(f"Search error: {e}")
+            return ["Greška pri web pretrazi. Molim pokušajte ponovo."]
 
 class NESAKOChatbot:
     def __init__(self):
@@ -114,7 +116,13 @@ class NESAKOChatbot:
         return user_input.lower()
 
     def search_web(self, query: str) -> List[str]:
-        return self.search.search_web(query)
+        # Ensure we always return a list, even if search fails
+        try:
+            results = self.search.search_web(query)
+            return results if results else []
+        except Exception as e:
+            print(f"Search error: {e}")
+            return []
 
     # --- Novo: formatiranje i glavna logika odgovora ---
     def format_search_results(self, results: List[str]) -> str:

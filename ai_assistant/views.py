@@ -1212,28 +1212,24 @@ def web_check(request):
     if not q:
         return JsonResponse({"error": "Missing q"}, status=400)
     try:
-        search_url = f"https://www.google.com/search?q={urllib.parse.quote(q)}"
-        content = DeepSeekAPI().get_web_content(search_url)
+        # Use the NESAKO search functionality which uses SerpAPI
+        search_results = NESAKOChatbot().search_web(q)
         
-        # If content is empty or error, provide a better response
-        if not content or content.startswith("Error:"):
+        if not search_results:
             return JsonResponse({
                 "query": q, 
-                "source": search_url, 
-                "content": "Nisam uspeo da pronađem relevantne informacije za ovaj upit. Molim pokušajte drugačiju formulaciju pretrage.",
+                "content": "Nisam pronašao relevantne rezultate za ovaj upit. Molim pokušajte drugačiju formulaciju pretrage.",
                 "error": "No relevant content found"
             })
         
-        # Clean and format the content better
-        cleaned_content = content.replace('\n', ' ').replace('  ', ' ')
-        if len(cleaned_content) > 1500:
-            cleaned_content = cleaned_content[:1497] + '...'
-            
+        # Format the results
+        formatted_content = "\n".join([f"{i+1}. {result}" for i, result in enumerate(search_results[:5])])
+        
         return JsonResponse({
             "query": q, 
-            "source": search_url, 
-            "content": cleaned_content,
-            "formatted": True
+            "content": formatted_content,
+            "formatted": True,
+            "results_count": len(search_results)
         })
     except Exception as e:
         return JsonResponse({
