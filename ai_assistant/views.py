@@ -915,41 +915,59 @@ IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
                         'memory_active': True
                     })
                 else:
-                    error_msg = f"DeepSeek API greška: {response.status_code}"
-                    if response.text:
-                        error_msg += f" - {response.text[:500]}"  # Limit error message length
+                    # Fallback to NESAKO chatbot when API fails
+                    print("DeepSeek API failed, falling back to NESAKO chatbot")
+                    ai_response = self.nesako.get_response(user_input)
                     
-                    print(f"API Error: {error_msg}")
+                    # Add context from tools and additional data
+                    if additional_data:
+                        ai_response = f"{additional_data}\n\n{ai_response}"
+                    if tools_output:
+                        ai_response = f"{tools_output}\n\n{ai_response}"
                     
                     return JsonResponse({
-                        'error': error_msg,
-                        'status': 'error',
-                        'response': f'Greška u komunikaciji sa AI sistemom (kod {response.status_code}). Molim pokušajte ponovo.'
-                    }, status=400)
+                        'response': ai_response,
+                        'status': 'success',
+                        'timestamp': current_time.isoformat(),
+                        'mode': 'nesako_fallback',
+                        'tools_used': bool(tools_output),
+                        'context_aware': bool(context_summary),
+                        'response_length': len(ai_response),
+                        'note': 'NESAKO fallback used due to API error'
+                    })
                     
             except requests.exceptions.Timeout:
-                print("ERROR: API request timeout")
+                print("ERROR: API request timeout - using NESAKO fallback")
+                ai_response = self.nesako.get_response(user_input)
                 return JsonResponse({
-                    'error': 'Request timeout',
-                    'status': 'error',
-                    'response': 'AI sistem ne odgovara (timeout). Molim pokušajte ponovo.'
-                }, status=408)
+                    'response': ai_response,
+                    'status': 'success',
+                    'timestamp': current_time.isoformat(),
+                    'mode': 'nesako_fallback_timeout',
+                    'note': 'NESAKO fallback used due to API timeout'
+                })
                 
             except requests.exceptions.ConnectionError:
-                print("ERROR: API connection error")
+                print("ERROR: API connection error - using NESAKO fallback")
+                ai_response = self.nesako.get_response(user_input)
                 return JsonResponse({
-                    'error': 'Connection error',
-                    'status': 'error',
-                    'response': 'Nema konekcije sa AI sistemom. Proverite internet vezu.'
-                }, status=503)
+                    'response': ai_response,
+                    'status': 'success',
+                    'timestamp': current_time.isoformat(),
+                    'mode': 'nesako_fallback_connection',
+                    'note': 'NESAKO fallback used due to connection error'
+                })
                 
             except Exception as api_error:
-                print(f"ERROR: Unexpected API error: {api_error}")
+                print(f"ERROR: Unexpected API error: {api_error} - using NESAKO fallback")
+                ai_response = self.nesako.get_response(user_input)
                 return JsonResponse({
-                    'error': f'Unexpected API error: {str(api_error)}',
-                    'status': 'error',
-                    'response': 'Neočekivana greška u AI sistemu. Molim pokušajte ponovo.'
-                }, status=500)
+                    'response': ai_response,
+                    'status': 'success',
+                    'timestamp': current_time.isoformat(),
+                    'mode': 'nesako_fallback_error',
+                    'note': f'NESAKO fallback used due to API error: {str(api_error)}'
+                })
                 
         except json.JSONDecodeError as e:
             print(f"JSON error: {e}")
@@ -1695,6 +1713,38 @@ Da li želite da nastavite? (potrebna je eksplicitna potvrda)"""
         explanations.append("• Dao sam praktično rešenje koje možete odmah primeniti")
         
         return "\n".join(explanations)
+
+    def generate_fallback_image_response(self, processed_images, user_instruction):
+        """Generate fallback response when AI API is unavailable"""
+        response_parts = []
+        
+        response_parts.append("📸 **ANALIZA SLIKA (FALLBACK MODE)**")
+        response_parts.append("")
+        response_parts.append("AI servis je trenutno nedostupan, ali evo osnovne analize:")
+        response_parts.append("")
+        
+        for img in processed_images:
+            response_parts.append(f"**{img['filename']}:**")
+            response_parts.append(f"  • Format: {img['info'].get('format', 'Nepoznato')}")
+            response_parts.append(f"  • Dimenzije: {img['info'].get('width', 0)}x{img['info'].get('height', 0)}")
+            response_parts.append(f"  • Veličina: {img['info'].get('size_kb', 0)} KB")
+            
+            if 'color_mode' in img['info']:
+                response_parts.append(f"  • Boje: {img['info']['color_mode']}")
+            
+            if 'analysis' in img and 'estimated_type' in img['analysis']:
+                response_parts.append(f"  • Tip: {img['analysis']['estimated_type']}")
+            
+            response_parts.append("")
+        
+        if user_instruction:
+            response_parts.append(f"**Vaš zahtev:** {user_instruction}")
+            response_parts.append("")
+            response_parts.append("ℹ️ *Za detaljniju analizu, molim pokušajte ponovo kada AI servis bude dostupan*")
+        else:
+            response_parts.append("ℹ️ *Za detaljnu AI analizu, molim pokušajte ponovo kasnije*")
+        
+        return "\n".join(response_parts)
     
     def handle_image_upload(self, request):
         """Obrađuje upload slika"""
@@ -1868,18 +1918,34 @@ Odgovori direktno i korisno na osnovu analize slika."""
                         'tools_used': True
                     })
                 else:
+                    # Fallback response when API fails
+                    fallback_response = self.generate_fallback_image_response(processed_images, user_instruction)
+                    
                     return JsonResponse({
-                        'error': f'DeepSeek API greška: {response.status_code}',
-                        'status': 'error',
-                        'response': 'Greška pri analizi slika. Molim pokušajte ponovo.'
-                    }, status=400)
+                        'response': fallback_response,
+                        'status': 'success',
+                        'timestamp': current_time.isoformat(),
+                        'mode': 'image_analysis_fallback',
+                        'images_processed': len(processed_images),
+                        'image_data': processed_images,
+                        'tools_used': True,
+                        'note': 'Fallback response used due to API error'
+                    })
                     
             except Exception as api_error:
+                # Fallback response when API call fails completely
+                fallback_response = self.generate_fallback_image_response(processed_images, user_instruction)
+                
                 return JsonResponse({
-                    'error': f'API greška: {str(api_error)}',
-                    'status': 'error',
-                    'response': 'Greška pri komunikaciji sa AI sistemom.'
-                }, status=500)
+                    'response': fallback_response,
+                    'status': 'success',
+                    'timestamp': current_time.isoformat(),
+                    'mode': 'image_analysis_fallback',
+                    'images_processed': len(processed_images),
+                    'image_data': processed_images,
+                    'tools_used': True,
+                    'note': 'Fallback response used due to API connection error'
+                })
                 
         except Exception as e:
             print(f"Image upload error: {e}")
