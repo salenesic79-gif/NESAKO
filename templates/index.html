@@ -785,17 +785,19 @@
             <div class="header-content" style="height: 100%; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; width: 100%;">
                 <h1 style="font-size: 20px; margin: 0; line-height: 70px;">🤖 NESAKO AI</h1>
                 <div class="header-menu" style="position: relative; display: flex; align-items: center; height: 100%;">
-                    <button id="hamburger-menu" class="hamburger-btn" style="font-size: 24px; padding: 8px 16px; margin: 0;" onclick="toggleHamburgerMenu()">
-                        ☰
-                    </button>
-                    <div id="hamburger-content" class="hamburger-content">
-                        <button class="hamburger-item" onclick="showLessonsUI()">📚 Prikaži naučeno</button>
-                        <button class="hamburger-item" onclick="clearChat()">🗑️ Obriši razgovor</button>
-                        <button class="hamburger-item" onclick="exportChat()">💾 Izvezi razgovor</button>
-                        <button class="hamburger-item" onclick="openSportsBetting()">⚽ Sportske prognoze</button>
-                        <button class="hamburger-item" onclick="showSettings()">⚙️ Podešavanja</button>
-                        <button class="hamburger-item" onclick="enableSelfModification()">🔄 Samopromena</button>
-                        <button class="hamburger-item" onclick="logout()">🚪 Logout</button>
+                    <div class="hamburger-menu">
+                        <button id="hamburger-menu" class="hamburger-btn" style="font-size: 24px; padding: 8px 16px; margin: 0;" onclick="toggleHamburgerMenu()">
+                            ☰
+                        </button>
+                        <div id="hamburger-content" class="hamburger-content">
+                            <button class="hamburger-item" onclick="showLessonsUI()">📚 Prikaži naučeno</button>
+                            <button class="hamburger-item" onclick="clearChat()">🗑️ Obriši razgovor</button>
+                            <button class="hamburger-item" onclick="exportChat()">💾 Izvezi razgovor</button>
+                            <button class="hamburger-item" onclick="openSportsBetting()">⚽ Sportske prognoze</button>
+                            <button class="hamburger-item" onclick="showSettings()">⚙️ Podešavanja</button>
+                            <button class="hamburger-item" onclick="enableSelfModification()">🔄 Samopromena</button>
+                            <button class="hamburger-item" onclick="logout()">🚪 Logout</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -998,6 +1000,7 @@ Možete koristiti:
 
         // UI za prikaz lessons_learned - poslednjih 10 najkraće
         async function showLessonsUI() {
+            closeHamburgerMenu();
             try {
                 updateStatus('Učitavam naučene lekcije...', true);
                 const res = await fetch('/lessons/');
@@ -1006,7 +1009,6 @@ Možete koristiti:
                 }
                 const data = await res.json();
                 showLessons(data);
-                toggleHamburgerMenu();
             } catch (e) {
                 console.error('Error loading lessons:', e);
                 addAIMessage('❌ Greška pri učitavanju naučenog. Proverite konzolu za detalje.', false);
@@ -1342,7 +1344,8 @@ Možete koristiti:
             fetch('/api/chat/', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
                 },
                 body: JSON.stringify({
                     instruction: message,
@@ -1351,7 +1354,12 @@ Možete koristiti:
                     chat_id: currentChatId
                 })
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 handleApiResponse(data);
             })
@@ -1360,8 +1368,6 @@ Možete koristiti:
                 addMessage(`Greška u komunikaciji: ${error.message}`, false, { mode: 'error' });
                 updateStatus('Greška u komunikaciji', false);
                 isTyping = false;
-            })
-            .finally(() => {
                 input.disabled = false;
                 sendBtn.disabled = false;
                 input.focus();
@@ -1613,6 +1619,7 @@ Možete koristiti:
         
         // Logout function
         function logout() {
+            closeHamburgerMenu();
             if (confirm('Da li ste sigurni da se želite izlogovati?')) {
                 fetch('/logout/', {
                     method: 'POST',
@@ -1628,7 +1635,6 @@ Možete koristiti:
                     window.location.href = '/login/';
                 });
             }
-            toggleHamburgerMenu();
         }
         
         // Quick access function
@@ -1837,7 +1843,17 @@ Možete koristiti:
         // Toggle hamburger menu
         function toggleHamburgerMenu() {
             const hamburgerContent = document.getElementById('hamburger-content');
-            hamburgerContent.classList.toggle('show');
+            if (hamburgerContent) {
+                hamburgerContent.classList.toggle('show');
+            }
+        }
+        
+        // Close hamburger menu
+        function closeHamburgerMenu() {
+            const hamburgerContent = document.getElementById('hamburger-content');
+            if (hamburgerContent) {
+                hamburgerContent.classList.remove('show');
+            }
         }
         
         // Close hamburger menu when clicking outside
@@ -1845,8 +1861,10 @@ Možete koristiti:
             const hamburgerMenu = document.querySelector('.hamburger-menu');
             const hamburgerContent = document.getElementById('hamburger-content');
             
-            if (!hamburgerMenu.contains(e.target)) {
-                hamburgerContent.classList.remove('show');
+            if (hamburgerMenu && hamburgerContent) {
+                if (!hamburgerMenu.contains(e.target)) {
+                    hamburgerContent.classList.remove('show');
+                }
             }
             
             // Also close history menu
@@ -1854,12 +1872,15 @@ Možete koristiti:
             const historyMenu = document.getElementById('history-menu');
             
             if (historyDropdown && !historyDropdown.contains(e.target)) {
-                historyMenu.style.display = 'none';
+                if (historyMenu) {
+                    historyMenu.style.display = 'none';
+                }
             }
         });
 
         // Hamburger menu functions
         function clearChat() {
+            closeHamburgerMenu();
             if (confirm('Da li ste sigurni da želite da obrišete razgovor?')) {
                 conversationHistory = [];
                 document.getElementById('chat-messages').innerHTML = '';
@@ -1867,11 +1888,11 @@ Možete koristiti:
                 sessionStartTime = Date.now();
                 updateStats();
                 addMessage('Razgovor je obrisan. Kako mogu da vam pomognem?', false);
-                toggleHamburgerMenu();
             }
         }
 
         function exportChat() {
+            closeHamburgerMenu();
             const chatContent = conversationHistory.map(msg => 
                 `${msg.isUser ? 'KORISNIK' : 'AI'}: ${msg.content}`
             ).join('\n\n');
@@ -1887,10 +1908,10 @@ Možete koristiti:
             URL.revokeObjectURL(url);
             
             addMessage('💾 Razgovor je izvežen!', false);
-            toggleHamburgerMenu();
         }
 
         function showSettings() {
+            closeHamburgerMenu();
             const settings = prompt('Podešavanja:\n\n1. Auto-otvaranje task panela (trenutno: ' + autoOpenTaskPanel + ')\n2. Kompleksni taskovi (trenutno: ' + enableComplexTasks + ')\n\nUnesite broj podešavanja za promenu:');
             if (settings === '1') {
                 autoOpenTaskPanel = !autoOpenTaskPanel;
@@ -1899,17 +1920,16 @@ Možete koristiti:
                 enableComplexTasks = !enableComplexTasks;
                 addMessage('⚙️ Kompleksni taskovi: ' + (enableComplexTasks ? 'UKLJUČENO' : 'ISKLJUČENO'), false);
             }
-            toggleHamburgerMenu();
         }
 
         function openSportsBetting() {
+            closeHamburgerMenu();
             addMessage('⚽ Sportske prognoze - Molim unesite vaš upit za sportske prognoze (npr. "Ko je favorit u utakmici Partizan - Zvezda?")', true);
-            toggleHamburgerMenu();
         }
 
         function enableSelfModification() {
+            closeHamburgerMenu();
             addMessage('🔄 Samopromena aktivirana! Sada možete tražiti promene koda i izgleda.', false);
-            toggleHamburgerMenu();
         }
         
         // Initialize
