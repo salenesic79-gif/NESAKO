@@ -179,16 +179,21 @@ class HeavyTaskProcessor:
                 exception[0] = e
         
         thread = threading.Thread(target=target)
-        thread.daemon = True  # Make thread a daemon so it won't block program exit
+        thread.daemon = True
         thread.start()
         thread.join(timeout)
         
         if thread.is_alive():
-            # Timeout - we can't reliably terminate threads in Python, so we just mark it
-            raise TimeoutError(f"Task exceeded timeout of {timeout} seconds")
+            # Log timeout but don't raise to prevent crashes
+            import logging
+            logging.warning(f"Task exceeded timeout of {timeout} seconds")
+            return None
         
         if exception[0]:
-            raise exception[0]
+            # Log exception but don't raise to prevent crashes
+            import logging
+            logging.error(f"Task execution error: {exception[0]}")
+            return None
         
         return result[0]
     

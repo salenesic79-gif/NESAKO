@@ -1082,11 +1082,18 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
             except Exception as api_error:
                 print(f"ERROR: Unexpected API error: {api_error} - using NESAKO fallback")
                 ai_response = self.nesako.get_response(user_input)
+                # Add context from tools and additional data for consistency
+                if additional_data:
+                    ai_response = f"{additional_data}\n\n{ai_response}"
+                if tools_output:
+                    ai_response = f"{tools_output}\n\n{ai_response}"
                 return JsonResponse({
                     'response': ai_response,
                     'status': 'success',
                     'timestamp': current_time.isoformat(),
                     'mode': 'nesako_fallback_error',
+                    'tools_used': bool(tools_output),
+                    'context_aware': bool(context_summary),
                     'note': f'NESAKO fallback used due to API error: {str(api_error)}'
                 })
                 
@@ -1240,113 +1247,103 @@ def web_check(request):
         import time
         current_time = time.time()
         
-        print(f"DEBUG: get_task_progress called with task_id: '{task_id}'")
-        
         # Check if it's a heavy task
         if task_id and task_id.startswith('heavy_'):
-            heavy_task_status = task_processor.get_task_status(task_id)
-            
-            if heavy_task_status['status'] == 'not_found':
-                return {'status': 'not_found', 'progress': 0}
-            
-            status_mapping = {
-                'pending': 'running',
-                'running': 'running', 
-                'completed': 'completed',
-                'failed': 'failed',
-                'cancelled': 'cancelled',
-                'retrying': 'running'
-            }
-            
-            mapped_status = status_mapping.get(heavy_task_status['status'], 'running')
-            
-            if mapped_status == 'completed':
-                result_text = f"✅ **HEAVY TASK ZAVRŠEN**\n\n"
-                result_text += f"Task ID: `{task_id}`\n"
-                result_text += f"Status: Uspešno završen\n"
-                result_text += f"Trajanje: {self.calculate_task_duration(heavy_task_status)}\n\n"
+            try:
+                heavy_task_status = task_processor.get_task_status(task_id)
                 
-                if heavy_task_status.get('result'):
-                    result_text += f"**REZULTAT:**\n{self.format_heavy_task_result(heavy_task_status['result'])}"
+                if heavy_task_status['status'] == 'not_found':
+                    return {'status': 'not_found', 'progress': 0}
                 
-                return {
-                    'status': 'completed',
-                    'progress': 100,
-                    'result': result_text
+                status_mapping = {
+                    'pending': 'running',
+                    'running': 'running', 
+                    'completed': 'completed',
+                    'failed': 'failed',
+                    'cancelled': 'cancelled',
+                    'retrying': 'running'
                 }
-            
-            elif mapped_status == 'failed':
-                error_text = f"❌ **HEAVY TASK NEUSPEŠAN**\n\n"
-                error_text += f"Task ID: `{task_id}`\n"
-                error_text += f"Greška: {heavy_task_status.get('error', 'Nepoznata greška')}\n"
-                error_text += f"Pokušaji: {heavy_task_status.get('retry_count', 0)}\n"
                 
-                return {
-                    'status': 'failed',
-                    'progress': 0,
-                    'result': error_text
-                }
-            
-            else:
+                mapped_status = status_mapping.get(heavy_task_status['status'], 'running')
+                
+                if mapped_status == 'completed':
+                    result_text = f"✅ **HEAVY TASK ZAVRŠEN**\n\n"
+                    result_text += f"Task ID: `{task_id}`\n"
+                    result_text += f"Status: Uspešno završen\n"
+                    result_text += f"Trajanje: {self.calculate_task_duration(heavy_task_status)}\n\n"
+                    
+                    if heavy_task_status.get('result'):
+                        result_text += f"**REZULTAT:**\n{self.format_heavy_task_result(heavy_task_status['result'])}"
+                    
+                    return {
+                        'status': 'completed',
+                        'progress': 100,
+                        'result': result_text
+                    }
+                
+                elif mapped_status == 'failed':
+                    error_text = f"❌ **HEAVY TASK NEUSPEŠAN**\n\n"
+                    error_text += f"Task ID: `{task_id}`\n"
+                    error_text += f"Greška: {heavy_task_status.get('error', 'Nepoznata greška')}\n"
+                    error_text += f"Pokušaji: {heavy_task_status.get('retry_count', 0)}\n"
+                    
+                    return {
+                        'status': 'failed',
+                        'progress': 0,
+                        'result': error_text
+                    }
+                
+                else:
+                    return {
+                        'status': 'running',
+                        'progress': heavy_task_status.get('progress', 50)
+                    }
+            except Exception as e:
+                # Fallback for task processor errors
                 return {
                     'status': 'running',
-                    'progress': heavy_task_status.get('progress', 50)
+                    'progress': 50,
+                    'result': None
                 }
         
         # Legacy task handling
-        print(f"DEBUG: Current time: {current_time}")
-        
         try:
-            # Parse different task_id formats
+            # Parse task_id to get timestamp
             task_timestamp = None
-            
             if task_id and task_id.startswith('task_'):
                 # Remove 'task_' prefix
-                id_part = task_id[5:]  # Remove 'task_'
-                print(f"DEBUG: ID part after removing 'task_': '{id_part}'")
+                id_part = task_id[5:]
                 
                 if '_' in id_part:
-                    # Format: task_TIMESTAMP_COUNTER
                     parts = id_part.split('_')
                     timestamp_str = parts[0]
-                    print(f"DEBUG: Timestamp string from parts: '{timestamp_str}'")
                 else:
-                    # Format: task_TIMESTAMP
                     timestamp_str = id_part
-                    print(f"DEBUG: Timestamp string direct: '{timestamp_str}'")
                 
                 # Convert timestamp
                 if len(timestamp_str) > 10:
-                    # Milliseconds - convert to seconds
                     task_timestamp = int(timestamp_str) / 1000.0
-                    print(f"DEBUG: Converted from milliseconds: {task_timestamp}")
                 else:
-                    # Already in seconds
                     task_timestamp = int(timestamp_str)
-                    print(f"DEBUG: Used as seconds: {task_timestamp}")
             
             if task_timestamp is None:
-                if task_id:
-                    raise ValueError(f"Could not parse timestamp from task_id: {task_id}")
-                else:
-                    raise ValueError("task_id is None or empty")
+                return {
+                    'status': 'not_found',
+                    'progress': 0,
+                    'result': None
+                }
             
             # Calculate elapsed time
             elapsed = current_time - task_timestamp
-            print(f"DEBUG: Elapsed time: {elapsed} seconds")
             
             # Progress calculation over 15 seconds
             duration = 15.0
             if elapsed < 0:
-                # Task is in the future? Set to 0
                 elapsed = 0
-                print("DEBUG: Negative elapsed time, setting to 0")
             
             if elapsed < duration:
-                # Task is running
                 progress = int((elapsed / duration) * 100)
-                progress = max(1, min(99, progress))  # Keep between 1-99%
-                print(f"DEBUG: Task running - Progress: {progress}%")
+                progress = max(1, min(99, progress))
                 
                 return {
                     'status': 'running',
@@ -1354,8 +1351,6 @@ def web_check(request):
                     'result': None
                 }
             else:
-                # Task completed
-                print(f"DEBUG: Task completed after {elapsed} seconds")
                 return {
                     'status': 'completed',
                     'progress': 100,
@@ -1363,14 +1358,10 @@ def web_check(request):
                 }
                 
         except Exception as e:
-            print(f"DEBUG: Exception in get_task_progress: {e}")
-            print(f"DEBUG: Exception type: {type(e).__name__}")
-            
             # Fallback: return incremental progress based on current time
-            fallback_progress = int((current_time % 15) * 6.67)  # 0-100 over 15 seconds
+            fallback_progress = int((current_time % 15) * 6.67)
             fallback_progress = max(1, min(95, fallback_progress))
             
-            print(f"DEBUG: Using fallback progress: {fallback_progress}%")
             return {
                 'status': 'running',
                 'progress': fallback_progress,

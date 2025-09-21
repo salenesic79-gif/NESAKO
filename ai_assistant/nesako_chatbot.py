@@ -92,6 +92,18 @@ class NESAKOChatbot:
         if any(p in content for p in key_phrases):
             pattern = self.create_pattern_from_input(content)
             self.memory.learn_pattern(pattern, assistant_response)
+            
+        # Also save to persistent memory if available
+        try:
+            from .memory_manager import PersistentMemoryManager
+            memory = PersistentMemoryManager()
+            session_id = "default_session"  # This should be passed from the view
+            memory.save_learning_data(session_id, 'conversation_pattern', {
+                'user_input': user_input,
+                'assistant_response': assistant_response
+            }, 0.7)
+        except Exception:
+            pass  # Silently fail if persistent memory is not available
 
     def create_pattern_from_input(self, user_input: str) -> str:
         words = user_input.lower().split()

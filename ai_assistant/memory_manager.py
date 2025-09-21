@@ -367,6 +367,12 @@ class PersistentMemoryManager:
                     WHERE completed_at < ? AND task_status = 'completed'
                 ''', (task_cutoff,))
                 
+                # Briši stare podatke učenja
+                cursor.execute('''
+                    DELETE FROM user_learning 
+                    WHERE last_updated < ?
+                ''', (cutoff_date,))
+                
                 # Optimizacija baze nakon brisanja
                 cursor.execute('VACUUM')
                 
