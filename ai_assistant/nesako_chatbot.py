@@ -232,47 +232,58 @@ ODGOVORI U SKLADU SA PROTOKOLOM:
         """
         Validates the response for potential hallucinations and adds disclaimers
         """
-        # List of phrases that indicate uncertainty or potential hallucinations
-        uncertain_phrases = [
-            'verovatno', 'možda', 'pretpostavljam', 'rekao bih', 'čini mi se',
-            'mislim da', 'vrv', 'moguće', 'potencijalno', 'izgleda', 'sigurno',
-            'definitivno', 'apsolutno', '100%', 'nema sumnje'
-        ]
-        
-        # Check if response contains uncertain or overconfident language
         response_lower = response.lower()
-        has_uncertainty = any(phrase in response_lower for phrase in uncertain_phrases)
         
-        # Check for specific factual claims that might be hallucinations
-        factual_keywords = [
-            'je', 'su', 'ima', 'bio', 'bila', 'bilo', 'tačno', 'sigurno',
-            'rezultat', 'pobedio', 'izgubio', 'utakmica', 'šampion', 'takmičenje',
-            'statistika', 'broj', 'podatak', 'istina', 'činjenica'
+        # Lista zabranjenih izjava - stvari koje AI NE SME da tvrdi
+        forbidden_claims = [
+            'sigurno znam', 'definitivno je', '100% tačno', 'nema sumnje',
+            'potvrđeno je', 'zvanični podaci', 'provereno je', 'garantujem'
         ]
-        has_factual_claims = any(keyword in response_lower for keyword in factual_keywords)
         
-        # Always add disclaimer for factual content
-        if has_factual_claims:
-            disclaimer = "\n\n⚠️ *Molim proverite ove informacije na zvaničnim izvorima - ovo je AI generisan odgovor koji može sadržati netačnosti*"
-            # Make sure we don't add the disclaimer multiple times
+        # Lista faktualnih pojmova koji zahtevaju proveru
+        factual_triggers = [
+            'je', 'su', 'ima', 'bio', 'bila', 'bilo', 'tačno', 'rezultat',
+            'pobedio', 'izgubio', 'utakmica', 'šampion', 'takmičenje', 'statistika',
+            'broj', 'podatak', 'istina', 'činjenica', 'datum', 'godina', 'cena',
+            'cene', 'evra', 'dolara', 'cena', 'cene'
+        ]
+        
+        # Provera za zabranjene izjave
+        has_forbidden_claims = any(claim in response_lower for claim in forbidden_claims)
+        
+        # Provera za faktualne tvrdnje
+        has_factual_claims = any(keyword in response_lower for keyword in factual_triggers)
+        
+        # Provera za sportske pojmove
+        sports_keywords = ['utakmica', 'rezultat', 'tim', 'igrač', 'liga', 'šampionat', 'gol', 'asist']
+        has_sports_content = any(keyword in response_lower for keyword in sports_keywords)
+        
+        # Dodaj odgovarajuće disclaimere
+        if has_forbidden_claims:
+            disclaimer = "\n\n🚨 **UPOZORENJE:** Ovo je AI generisan odgovor. Molim proverite sve informacije na zvaničnim izvorima pre nego što ih koristite."
             if disclaimer not in response:
                 response += disclaimer
-        elif has_uncertainty:
-            disclaimer = "\n\nℹ️ *Ovo je AI generisan odgovor baziran na trenutnim informacijama - molim proverite za kritične podatke*"
+        
+        elif has_factual_claims:
+            disclaimer = "\n\n⚠️ **NAPOMENA:** Ove informacije su generisane od strane AI-a. Molim proverite tačnost na pouzdanim izvorima."
+            if disclaimer not in response:
+                response += disclaimer
+        
+        elif has_sports_content:
+            disclaimer = "\n\n⚽ **SPORTSKE INFORMACIJE:** Za najtačnije i najažurnije sportske informacije, molim posetite zvanične sajtove sportskih organizacija."
             if disclaimer not in response:
                 response += disclaimer
         else:
-            # Add general disclaimer for all AI responses
-            disclaimer = "\n\nℹ️ *AI generisan odgovor - preporučujem proveru na zvaničnim izvorima za važne informacije*"
+            # Opšti disclaimer za sve AI odgovore
+            disclaimer = "\n\nℹ️ **NAPOMENA:** Ovo je AI generisan odgovor. Preporučujem proveru kritičnih informacija na zvaničnim izvorima."
             if disclaimer not in response:
                 response += disclaimer
         
-        # Additional check for sports-related content
-        sports_keywords = ['utakmica', 'rezultat', 'tim', 'igrač', 'liga', 'šampionat']
-        if any(keyword in response_lower for keyword in sports_keywords):
-            sports_disclaimer = "\n\n⚽ *Za najtačnije sportske informacije preporučujem proveru na zvaničnim sportskim sajtovima*"
-            if sports_disclaimer not in response:
-                response += sports_disclaimer
+        # Dodatna provera za preteranu sigurnost
+        if 'sigurno' in response_lower or 'definitivno' in response_lower:
+            caution = "\n\n🔍 **SAVET:** Za potpuno tačne informacije, uvek proverite sa više nezavisnih izvora."
+            if caution not in response:
+                response += caution
         
         return response
 

@@ -921,41 +921,51 @@ Možete koristiti:
             ];
         }
 
-        // Istraži na webu - koristi pouzdane izvore
+        // Istraži na webu - koristi AI za bolje rezultate
         async function checkOnWeb() {
             const input = document.getElementById('user-input').value.trim();
             if (!input) return alert('Unesite upit za pretragu.');
             
             // Add user message to show what we're searching for
-            addMessage(`🌐 Istražujem pouzdane izvore za: "${input}"`, true);
+            addMessage(`🌐 Istražujem web za: "${input}"`, true);
             
-            updateStatus('Istražujem pouzdane izvore...', true);
+            updateStatus('AI analizira i pretražuje web...', true);
             try {
-                // Use the web_check endpoint which uses Google search
-                const response = await fetch(`/web_check?q=${encodeURIComponent(input)}`);
+                // Koristimo AI endpoint za pametniju pretragu
+                const response = await fetch('/api/chat/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCSRFToken()
+                    },
+                    body: JSON.stringify({
+                        instruction: `PRETRAŽI WEB I ANALIZIRAJ: "${input}" - Koristi pouzdane izvore i daj tačne informacije`,
+                        web_search: true,
+                        conversation_history: conversationHistory.slice(-3)
+                    })
+                });
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(`HTTP greška! status: ${response.status}`);
                 }
                 
                 const data = await response.json();
                 
                 if (data.error) {
                     addAIMessage(`❌ Greška pri pretrazi: ${data.error}`, false);
-                } else if (data.content) {
-                    // Format the response better
-                    let formattedResponse = `🔍 **REZULTATI PRETRAGE ZA "${input}":**\n\n`;
-                    formattedResponse += data.content + '\n\n';
-                    formattedResponse += `🌐 *Izvor: ${data.source || 'Google Search'}*\n`;
-                    formattedResponse += '⚠️ *Molim proverite informacije na zvaničnim sajtovima*';
-                    
-                    addAIMessage(formattedResponse, false);
+                } else if (data.response) {
+                    // Dodajemo disclaimer za web rezultate
+                    let aiResponse = data.response;
+                    if (!aiResponse.includes('⚠️') && !aiResponse.includes('proverite')) {
+                        aiResponse += '\n\n⚠️ *Ove informacije su sa interneta - molim proverite tačnost na zvaničnim izvorima*';
+                    }
+                    addAIMessage(aiResponse, false);
                 } else {
-                    addAIMessage('Nisam pronašao relevantne rezultate za vaš upit.', false);
+                    addAIMessage('❌ Nisam pronašao relevantne rezultate za vaš upit.', false);
                 }
             } catch (e) {
                 console.error('Web check error:', e);
-                addAIMessage('❌ Greška u komunikaciji sa serverom prilikom pretrage: ' + e.message, false);
+                addAIMessage('❌ Greška u komunikaciji sa serverom prilikom pretrage. Molim pokušajte ponovo.', false);
             } finally {
                 updateStatus('Spreman za rad', false);
             }
@@ -1698,45 +1708,28 @@ Možete koristiti:
             }
         });
 
-        // Handle image paste with better debugging
+        // Poboljšana paste funkcionalnost za slike
         userInput.addEventListener('paste', function(e) {
-            console.log('Paste event detected');
             const clipboardData = e.clipboardData || e.originalEvent.clipboardData;
-            if (!clipboardData) {
-                console.log('No clipboard data');
-                return;
-            }
+            if (!clipboardData) return;
             
-            const items = clipboardData.items;
-            console.log('Clipboard items:', items.length);
-            
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                console.log('Item type:', item.type);
-                
-                if (item.type.indexOf('image') !== -1) {
+            // Provera za slike
+            for (let i = 0; i < clipboardData.items.length; i++) {
+                const item = clipboardData.items[i];
+                if (item.type.startsWith('image/')) {
                     e.preventDefault();
-                    console.log('Image found in clipboard');
+                    
                     const blob = item.getAsFile();
                     if (blob) {
-                        const reader = new FileReader();
-                        reader.onload = function(event) {
-                            console.log('Image loaded, processing upload');
-                            processImageUpload(blob, event.target.result);
-                        };
-                        reader.onerror = function(error) {
-                            console.error('FileReader error:', error);
-                            addAIMessage('❌ Greška pri čitanju slike', false);
-                        };
-                        reader.readAsDataURL(blob);
-                    } else {
-                        console.error('Could not get file from clipboard item');
-                        addAIMessage('❌ Ne mogu da pristupim slici iz clipboard-a', false);
+                        // Prikaži obaveštenje korisniku
+                        addMessage(`📸 Paste-ovana slika: ${blob.name || 'screenshot'}`, true);
+                        
+                        // Obradi sliku
+                        processImageUpload(blob);
                     }
                     return;
                 }
             }
-            console.log('No image found in clipboard');
         });
 
         // Handle image drag and drop
