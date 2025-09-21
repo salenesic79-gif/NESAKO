@@ -367,6 +367,9 @@ class PersistentMemoryManager:
                     WHERE completed_at < ? AND task_status = 'completed'
                 ''', (task_cutoff,))
                 
+                # Optimizacija baze nakon brisanja
+                cursor.execute('VACUUM')
+                
                 conn.commit()
                 print(f"Cleaned up data older than {days_to_keep} days")
                 

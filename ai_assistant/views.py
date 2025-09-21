@@ -586,6 +586,14 @@ class DeepSeekAPI(View):
                     'response': 'Greška u parsiranju zahteva. Molim pokušajte ponovo.'
                 }, status=400)
             
+            # Add request validation
+            if not isinstance(data, dict):
+                return JsonResponse({
+                    'error': 'Invalid request format',
+                    'status': 'error',
+                    'response': 'Nevalidan format zahteva. Molim pokušajte ponovo.'
+                }, status=400)
+            
             user_input = data.get('instruction', '').strip()
             conversation_history = data.get('conversation_history', [])
             task_id = data.get('task_id', None)
@@ -631,11 +639,22 @@ class DeepSeekAPI(View):
             # Security threat detection - SAMO za kritične pretnje
             security_warnings = self.detect_critical_threats(user_input)
             if security_warnings:
+                # Log security threat
+                print(f"SECURITY THREAT DETECTED: {security_warnings}")
                 return JsonResponse({
                     'response': f"🚨 KRITIČNA PRETNJA DETEKTOVANA:\n{security_warnings}\n\nZadatak automatski blokiran.",
                     'status': 'blocked',
                     'threat_level': 'critical'
                 })
+            
+            # Rate limiting check
+            session_id = request.session.session_key
+            if not self.check_rate_limit(session_id):
+                return JsonResponse({
+                    'error': 'Rate limit exceeded',
+                    'status': 'error',
+                    'response': 'Previše zahteva u kratkom vremenu. Molim sačekajte nekoliko sekundi.'
+                }, status=429)
             
             # Get session ID for memory
             session_id = request.session.session_key
@@ -1484,6 +1503,32 @@ def web_check(request):
                 critical_threats.append(f"KRITIČNA PRETNJA: {pattern}")
         
         return "\n".join(critical_threats) if critical_threats else None
+
+    def check_rate_limit(self, session_id, max_requests=5, time_window=60):
+        """Check if user has exceeded rate limit"""
+        import time
+        current_time = time.time()
+        
+        if not hasattr(self, '_rate_limit_data'):
+            self._rate_limit_data = {}
+        
+        # Clean up old entries
+        for key in list(self._rate_limit_data.keys()):
+            if current_time - self._rate_limit_data[key]['timestamp'] > time_window:
+                del self._rate_limit_data[key]
+        
+        if session_id not in self._rate_limit_data:
+            self._rate_limit_data[session_id] = {
+                'count': 1,
+                'timestamp': current_time
+            }
+            return True
+        
+        if self._rate_limit_data[session_id]['count'] >= max_requests:
+            return False
+        
+        self._rate_limit_data[session_id]['count'] += 1
+        return True
     
     def analyze_and_learn_patterns(self, conversation_history):
         """Advanced learning system that remembers and adapts"""

@@ -179,11 +179,12 @@ class HeavyTaskProcessor:
                 exception[0] = e
         
         thread = threading.Thread(target=target)
+        thread.daemon = True  # Make thread a daemon so it won't block program exit
         thread.start()
         thread.join(timeout)
         
         if thread.is_alive():
-            # Timeout - pokušaj da prekineš thread (ograničeno u Python)
+            # Timeout - we can't reliably terminate threads in Python, so we just mark it
             raise TimeoutError(f"Task exceeded timeout of {timeout} seconds")
         
         if exception[0]:
