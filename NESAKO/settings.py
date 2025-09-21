@@ -49,7 +49,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'urls'
+ROOT_URLCONF = 'NESAKO.urls'
 
 TEMPLATES = [
     {
@@ -67,7 +67,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'wsgi.application'
+WSGI_APPLICATION = 'NESAKO.wsgi.application'
 
 # Database: use DATABASE_URL if provided (Render Postgres), else fallback to SQLite
 DATABASE_URL = os.getenv('DATABASE_URL')

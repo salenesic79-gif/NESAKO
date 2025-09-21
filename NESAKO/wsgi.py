@@ -10,12 +10,12 @@ https://docs.djangoproject.com/en/4.2/howto/deployment/wsgi/
 import os
 import sys
 
+# Add the project directory to the Python path
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(BASE_DIR)
+
 from django.core.wsgi import get_wsgi_application
 
-# Remove c:\Users\PC from path to avoid conflicts with transport module
-if 'C:\\Users\\PC' in sys.path:
-    sys.path.remove('C:\\Users\\PC')
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'NESAKO.settings')
 
 application = get_wsgi_application()
