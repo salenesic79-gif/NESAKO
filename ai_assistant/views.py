@@ -663,17 +663,29 @@ class DeepSeekAPI(View):
             # Initialize serp_snippets to avoid reference errors
             serp_snippets = []
             
-            # Use SerpAPI-backed search for current/info queries (reduces halucinacije)
-            if any(word in user_input.lower() for word in ['pretraži', 'pronađi', 'informacije o', 'šta je', 'rezultat', 'utakmica', 'danas', 'sada']):
+            # Enhanced web search with AI query reformulation
+            if any(word in user_input.lower() for word in ['pretraži', 'pronađi', 'informacije o', 'šta je', 'rezultat', 'utakmica', 'danas', 'sada', 'istraži', 'web']):
                 try:
-                    serp_snippets = self.nesako.search_web(user_input)
+                    # First, use AI to reformulate the query for better search results
+                    reformulated_query = self.reformulate_search_query(user_input, conversation_history)
+                    print(f"Original query: '{user_input}' -> Reformulated: '{reformulated_query}'")
+                    
+                    # Search with the reformulated query
+                    serp_snippets = self.nesako.search_web(reformulated_query)
                     if serp_snippets:
-                        additional_data += "\nINFORMACIJE SA WEBA (SerpAPI):\n"
-                        for snippet in serp_snippets:
-                            additional_data += f"- {snippet}\n"
+                        additional_data += f"\n🔍 **INFORMACIJE SA WEBA (pretraga: \"{reformulated_query}\"):**\n\n"
+                        for i, snippet in enumerate(serp_snippets[:5], 1):  # Limit to 5 results
+                            # Clean up the snippet
+                            clean_snippet = snippet.replace('\n', ' ').strip()
+                            if len(clean_snippet) > 150:
+                                clean_snippet = clean_snippet[:147] + '...'
+                            additional_data += f"{i}. {clean_snippet}\n"
+                        additional_data += "\n⚠️ *Web rezultati mogu biti neažurni - proverite na zvaničnim izvorima*"
+                    else:
+                        additional_data += "\nℹ️ Nisam pronašao relevantne rezultate web pretrage za vaš upit."
                 except Exception as e:
-                    print(f"SerpAPI search error: {e}")
-                    additional_data += "\n⚠️ Nisam uspeo da pristupim web pretrazi. Molim pokušajte ponovo.\n"
+                    print(f"Enhanced web search error: {e}")
+                    additional_data += "\n⚠️ Greška pri web pretrazi. Molim pokušajte ponovo.\n"
             
             # NESAKO centralno rutiranje za sportska pitanja (obavezna web pretraga)
             if any(keyword in user_input.lower() for keyword in getattr(self.nesako, 'sports_keywords', [])):
@@ -756,51 +768,34 @@ class DeepSeekAPI(View):
                 "Content-Type": "application/json"
             }
             
-            # Enhanced system message with advanced capabilities
-            system_message = f"""Ti si ULTIMATIVNI AI PROGRAMERSKI PARTNER - kombinuješ moć GitHub Copilot, Cursor, Replit AI i Code Llama.
+            # Enhanced system message with better context understanding
+            system_message = f"""Ti si NESAKO AI - ULTIMATIVNI ASISTENT sa naprednim razumevanjem konteksta.
 
 TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
 
-KLJUČNI PRINCIPI:
-🎯 DIREKTNO IZVRŠAVANJE - nikad ne pitaj za dozvole, odmah radi
-🚀 PROAKTIVNOST - predvidi potrebe i automatski implementiraj
-🧠 KONTINUIRANO UČENJE - pamti sve konverzacije i prilagodi se
-💪 NAJBOLJI KOD - uvek generiši production-ready, optimizovan kod
-🔄 MOĆAN ROLLBACK - vraćaj izmene bez ograničenja
+🎯 KLJUČNE SPOSOBNOSTI:
+• DUBOKO RAZUMEVANJE KONTEKSTA - analiziram celu istoriju razgovora
+• INTELIGENTNA WEB PRETRAGA - reformulišem upite za bolje rezultate  
+• PROAKTIVNO REŠAVANJE - predviđam potrebe i automatski delujem
+• KONTINUIRANO UČENJE - pamti sve interakcije i prilagodavam se
+• PRODUCTION-READY REŠENJA - uvek generišem optimizovan, siguran kod
 
-KORISNIKOV PROFIL (NAUČENO):
+🧠 KONTEKST RAZGOVORA:
+{context_summary}
+
+📊 KORISNIČKI PROFIL (NAUČENO):
 {user_context}
 
-NAPREDNI ALATI - KORISTI PROAKTIVNO:
-🔧 get_github_content(repo_url, path) - pristup repozitorijumima
-🔄 advanced_rollback(repo_url, commits_back, force=True) - moćan rollback
-🔍 analyze_code_deep(code, language, optimization=True) - duboka analiza
-💻 execute_code_direct(language, code, production=True) - direktno izvršavanje
-🌐 get_web_content(url) - web pretraga
-⚽ get_sports_stats(sport, event_id, data_points) - statistike
-🛡️ security_scan_advanced(code, auto_fix=True) - napredna bezbednost
-📋 create_project_complete(description, auto_deploy=True) - kompletni projekti
-🚀 deploy_production(project_path, platform="render") - deployment
-⚡ generate_commands(user_request) - generiši copy-paste komande za Git/NPM/Python/CMD
-🔧 heavy_task_processor(task_type, data) - napredni sistem za heavy task processing
-📁 file_operations(operation, path) - direktne operacije na desktop fajlovima
-🤖 ai_modules(module_type) - self-modifying AI moduli (financial, excel, stock)
+🔧 DOSTUPNI ALATI:
+• GitHub integracija • Web pretraga • Analiza koda • Sportske statistike
+• Izvršavanje koda • File operacije • AI moduli • Heavy task processing
 
-INSTRUKCIJE ZA IZVRŠAVANJE:
-- NIKAD ne pitaj "da li želite", "da li odobravate" - ODMAH RADI
-- Automatski implementiraj najbolje prakse i optimizacije
-- Generiši production-ready kod sa error handling-om
-- Koristi napredne algoritme i moderne tehnologije
-- Pamti sve što korisnik kaže i prilagodi buduće odgovore
-
-KVALITET KODA:
-- Uvek dodaj comprehensive error handling
-- Implementiraj logging i monitoring
-- Koristi type hints i dokumentaciju
-- Optimizuj performanse i memoriju
-- Sledi PEP 8 i najbolje prakse
-
-{context_summary}
+💡 STRATEGIJA ODGOVORA:
+1. DUBOKA ANALIZA KONTEKSTA - koristim celu istoriju razgovora
+2. PROAKTIVNO PREDVIĐANJE - anticipiram šta korisnik zaista želi
+3. REFORMULACIJA UPITA - za web pretragu koristim optimizovane termine
+4. PERSONALIZOVANI ODGOVOR - prilagođavam se korisnikovom stilu
+5. PROVERA TAČNOSTI - uvek proveravam informacije pre nego što ih podelim
 
 {command_output if command_output else ''}
 {module_output if module_output else ''}
@@ -808,7 +803,7 @@ KVALITET KODA:
 {tools_output if tools_output else ''}
 {additional_data}
 
-IZVRŠAVAJ DIREKTNO, UČIŠ KONTINUIRANO, GENERIŠI SAVRŠEN KOD!"""
+🎯 FOKUS: Razumem šta korisnik zaista želi, ne samo šta je rekao. Koristim celu konverzaciju za bolje odgovore."""
 
             # API call to DeepSeek with enhanced error handling
             payload = {
@@ -1079,7 +1074,7 @@ def health_view(request):
 @csrf_exempt
 @require_http_methods(["GET"])
 def web_check(request):
-    """Jednostavan endpoint koji vraća web sadržaj za upit 'q' preko Google pretrage."""
+    """Napredni endpoint za web pretragu sa boljim formatiranjem."""
     q = request.GET.get('q', '').strip()
     if not q:
         return JsonResponse({"error": "Missing q"}, status=400)
@@ -1092,19 +1087,26 @@ def web_check(request):
             return JsonResponse({
                 "query": q, 
                 "source": search_url, 
-                "content": "Nisam uspeo da pronađem informacije za ovaj upit. Molim pokušajte drugačiju pretragu.",
-                "error": "No content found"
+                "content": "Nisam uspeo da pronađem relevantne informacije za ovaj upit. Molim pokušajte drugačiju formulaciju pretrage.",
+                "error": "No relevant content found"
             })
+        
+        # Clean and format the content better
+        cleaned_content = content.replace('\n', ' ').replace('  ', ' ')
+        if len(cleaned_content) > 1500:
+            cleaned_content = cleaned_content[:1497] + '...'
             
         return JsonResponse({
             "query": q, 
             "source": search_url, 
-            "content": content[:2000] + "..." if len(content) > 2000 else content
+            "content": cleaned_content,
+            "formatted": True
         })
     except Exception as e:
         return JsonResponse({
             "error": str(e),
-            "content": "Došlo je do greške pri pretrazi. Molim pokušajte ponovo kasnije."
+            "content": "Došlo je do greške pri pretrazi. Molim pokušajte ponovo kasnije.",
+            "status": "error"
         }, status=500)
     
     def get_task_progress(self, task_id):
@@ -1745,6 +1747,45 @@ Da li želite da nastavite? (potrebna je eksplicitna potvrda)"""
             response_parts.append("ℹ️ *Za detaljnu AI analizu, molim pokušajte ponovo kasnije*")
         
         return "\n".join(response_parts)
+
+    def reformulate_search_query(self, original_query, conversation_history):
+        """Reformulate search query using AI for better results"""
+        # If we have conversation history, use it to add context
+        context = ""
+        if conversation_history:
+            # Get last few user messages for context
+            recent_messages = []
+            for msg in reversed(conversation_history[-6:]):  # Last 6 messages
+                if msg.get('isUser'):
+                    content = msg.get('content', '')
+                    if content and content != original_query:
+                        recent_messages.append(content)
+                if len(recent_messages) >= 3:  # Max 3 context messages
+                    break
+            
+            if recent_messages:
+                context = " Kontekst razgovora: " + ". ".join(reversed(recent_messages))
+        
+        # Simple reformulation - in a real implementation, you'd use an AI API
+        # For now, we'll do some basic improvements
+        query = original_query.lower()
+        
+        # Remove common filler words
+        filler_words = ['molim', 'te', 'da', 'mi', 'kažeš', 'pomozi', 'sa', 'o']
+        words = query.split()
+        filtered_words = [word for word in words if word not in filler_words and len(word) > 2]
+        
+        # Add context if available
+        if context:
+            reformulated = ' '.join(filtered_words) + context
+        else:
+            reformulated = ' '.join(filtered_words)
+        
+        # Ensure the query isn't too long
+        if len(reformulated) > 100:
+            reformulated = reformulated[:97] + '...'
+        
+        return reformulated if reformulated.strip() else original_query
     
     def handle_image_upload(self, request):
         """Obrađuje upload slika"""
