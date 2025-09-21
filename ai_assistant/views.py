@@ -122,7 +122,14 @@ class DeepSeekAPI(View):
             repo_response = requests.get(repo_api_url, headers=headers, timeout=15)
             
             if repo_response.status_code != 200:
-                return f"❌ GitHub repozitorijum nije pronađen ili nije javan: {owner}/{repo}"
+                # Try to get more specific error information
+                error_info = ""
+                try:
+                    error_data = repo_response.json()
+                    error_info = f" - {error_data.get('message', '')}"
+                except:
+                    pass
+                return f"❌ GitHub repozitorijum nije pronađen ili nije javan: {owner}/{repo}{error_info}"
             
             repo_data = repo_response.json()
             
@@ -186,7 +193,17 @@ class DeepSeekAPI(View):
                                 'message': 'Fajl je prevelik za prikaz (preko 50KB)'
                             }
             
-            return f"❌ GitHub API greška: {response.status_code} - {response.text}"
+            # More detailed error information
+            error_msg = f"❌ GitHub API greška: {response.status_code}"
+            try:
+                error_data = response.json()
+                error_msg += f" - {error_data.get('message', '')}"
+                if 'documentation_url' in error_data:
+                    error_msg += f" (dokumentacija: {error_data['documentation_url']})"
+            except:
+                error_msg += f" - {response.text[:200]}"
+            
+            return error_msg
             
         except requests.exceptions.Timeout:
             return "❌ GitHub API timeout - repozitorijum je prevelik ili server ne odgovara"
