@@ -2,7 +2,8 @@ import os
 import re
 import requests
 import json
-from typing import List, Optional
+from typing import List, Optional, Dict
+from scipy.optimize import minimize
 from .models import MemoryEntry, Conversation, LearningData
 
 SERPAPI_API_KEY = os.getenv('SERPAPI_API_KEY', '')
@@ -168,7 +169,7 @@ class NESAKOChatbot:
                 entities.append(word)
         return entities
     
-    def _extract_preferences(self, user_input: str) -> Dict:
+    def _extract_preferences(self, user_input: str) -> Dict[str, list]:
         """Extract user preferences from text"""
         return {
             'likes': [],
@@ -176,7 +177,7 @@ class NESAKOChatbot:
             'interests': []
         }
 
-    def get_sports_data(self, query: str) -> Dict:
+    def get_sports_data(self, query: str) -> Dict[str, any]:
         """Get real-time sports data from free APIs"""
         try:
             # Football data from free API
@@ -213,7 +214,7 @@ class NESAKOChatbot:
             print(f"Sports data error: {e}")
             return {'error': str(e)}
     
-    def _parse_football_data(self, data: Dict) -> Dict:
+    def _parse_football_data(self, data: Dict[str, any]) -> Dict[str, any]:
         """Parse football data from API response"""
         matches = []
         for match in data.get('matches', [])[:5]:  # Limit to 5 matches
@@ -236,7 +237,7 @@ class NESAKOChatbot:
             'source': 'football-data.org'
         }
     
-    def _generate_odds(self, home_team: str, away_team: str) -> Dict:
+    def _generate_odds(self, home_team: str, away_team: str) -> Dict[str, float]:
         """Generate realistic odds based on team names using advanced algorithms"""
         try:
             # Use team performance data if available
@@ -285,7 +286,7 @@ class NESAKOChatbot:
             
             return {'1': home_win, 'X': draw, '2': away_win}
     
-    def _get_team_performance(self, team_name: str) -> Dict:
+    def _get_team_performance(self, team_name: str) -> Dict[str, float]:
         """Get team performance metrics - in real implementation, use actual data"""
         # Mock data - replace with real API calls
         import random
@@ -295,7 +296,7 @@ class NESAKOChatbot:
             'form': random.uniform(0.3, 1.0)
         }
     
-    def calculate_betting_combinations(self, matches: List[Dict], budget: float) -> List[Dict]:
+    def calculate_betting_combinations(self, matches: List[Dict[str, any]], budget: float) -> List[Dict[str, any]]:
         """Calculate optimal betting combinations using Kelly Criterion and portfolio optimization"""
         try:
             import numpy as np
@@ -351,7 +352,7 @@ class NESAKOChatbot:
             # Fallback to simple method
             return self._simple_betting_combinations(matches, budget)
     
-    def _calculate_probability(self, match: Dict, outcome: str) -> float:
+    def _calculate_probability(self, match: Dict[str, any], outcome: str) -> float:
         """Calculate probability using multiple factors"""
         # This would use real data in production
         import random
@@ -369,7 +370,7 @@ class NESAKOChatbot:
         final_prob = base_prob + sum(factors.values())
         return max(0.1, min(0.9, final_prob))
     
-    def _optimize_portfolio(self, outcomes: List[Dict], budget: float) -> List[float]:
+    def _optimize_portfolio(self, outcomes: List[Dict[str, any]], budget: float) -> List[float]:
         """Optimize stake allocation using portfolio theory"""
         try:
             import numpy as np
@@ -406,7 +407,7 @@ class NESAKOChatbot:
             # Fallback to Kelly criterion
             return [outcome['kelly_fraction'] * budget for outcome in outcomes]
     
-    def _simple_betting_combinations(self, matches: List[Dict], budget: float) -> List[Dict]:
+    def _simple_betting_combinations(self, matches: List[Dict[str, any]], budget: float) -> List[Dict[str, any]]:
         """Simple fallback betting combination calculator"""
         combinations = []
         
