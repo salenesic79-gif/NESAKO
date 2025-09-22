@@ -69,6 +69,45 @@ TEMPLATES = [
 ]
 
 <<<<<<< HEAD
+ROOT_URLCONF = 'urls'
+>>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [BASE_DIR / 'templates'],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+ROOT_URLCONF = 'urls'
+>>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [BASE_DIR / 'templates'],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+<<<<<<< HEAD
 WSGI_APPLICATION = 'NESAKO.wsgi.application'
 =======
 ROOT_URLCONF = 'urls'
