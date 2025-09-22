@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#667eea">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="NESAKO AI">
     <link rel="manifest" href="/manifest.json">
@@ -811,6 +812,8 @@
             <div class="status-right">
                 <span class="learning-indicator" id="learningIndicator">🧠 Učim...</span>
                 <span class="memory-stats" id="memoryStats">Memorija: 0 chat-ova</span>
+                <span id="message-count" style="margin-left: 10px;">Poruke: 0</span>
+                <span id="session-time" style="margin-left: 10px;">Vreme: 0m</span>
             </div>
         </div>
         
@@ -890,6 +893,9 @@
             </div>
         </div>
         
+        <!-- Add history menu -->
+        <div class="history-menu" id="history-menu" style="display: none;"></div>
+        
         <div class="loading" id="loading">
             <div>🧠 AI analizira zahtev i priprema odgovor...</div>
         </div>
@@ -909,6 +915,9 @@ Možete koristiti:
                     rows="1"
                     style="min-height: 60px;"
                 ></textarea>
+                <div class="image-paste-overlay" id="image-paste-overlay" style="display: none;">
+                    Otpustite sliku ovde
+                </div>
                 <div class="char-counter" id="char-counter">0/50,000</div>
             </div>
             <div class="input-actions">
@@ -1069,11 +1078,18 @@ Možete koristiti:
             }
         }
         
-        // Update session stats
+        // Update session stats - with null checks
         function updateStats() {
             const elapsed = Math.floor((Date.now() - sessionStartTime) / 60000);
-            document.getElementById('message-count').textContent = `Poruke: ${messageCount}`;
-            document.getElementById('session-time').textContent = `Vreme: ${elapsed}m`;
+            const messageCountElement = document.getElementById('message-count');
+            const sessionTimeElement = document.getElementById('session-time');
+            
+            if (messageCountElement) {
+                messageCountElement.textContent = `Poruke: ${messageCount}`;
+            }
+            if (sessionTimeElement) {
+                sessionTimeElement.textContent = `Vreme: ${elapsed}m`;
+            }
         }
         
         // Update flow indicator
@@ -1867,13 +1883,18 @@ Možete koristiti:
                 }
             }
             
-            // Also close history menu
-            const historyDropdown = document.querySelector('.history-dropdown');
+            // Also close history menu - fix null reference
             const historyMenu = document.getElementById('history-menu');
-            
-            if (historyDropdown && !historyDropdown.contains(e.target)) {
-                if (historyMenu) {
-                    historyMenu.style.display = 'none';
+            if (historyMenu) {
+                // Check if click is outside the history menu
+                if (!historyMenu.contains(e.target)) {
+                    // Check if click is not on any element that might open the history menu
+                    const target = e.target;
+                    const isHistoryButton = target.closest('.history-btn') || 
+                                           target.classList.contains('history-btn');
+                    if (!isHistoryButton) {
+                        historyMenu.style.display = 'none';
+                    }
                 }
             }
         });
@@ -1932,14 +1953,32 @@ Možete koristiti:
             addMessage('🔄 Samopromena aktivirana! Sada možete tražiti promene koda i izgleda.', false);
         }
         
-        // Initialize
-        initializeSessions();
-        updateStats();
-        updateCharCounter();
-        setInterval(updateStats, 30000); // Update every 30 seconds
+        // Initialize - with error handling
+        function initializeApp() {
+            try {
+                if (typeof initializeSessions === 'function') {
+                    initializeSessions();
+                }
+                updateStats();
+                updateCharCounter();
+                setInterval(updateStats, 30000); // Update every 30 seconds
+                
+                // Focus input on load
+                const userInput = document.getElementById('user-input');
+                if (userInput) {
+                    userInput.focus();
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+            }
+        }
         
-        // Focus input on load
-        document.getElementById('user-input').focus();
+        // Initialize when DOM is loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+            initializeApp();
+        }
         
         // Task panel toggle
         function toggleTaskPanel() {
