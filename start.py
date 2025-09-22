@@ -7,12 +7,12 @@ def run_command(command):
     """Run a command and handle errors"""
     try:
         result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-        print(f"✓ {command}")
+        print(f"[OK] {command}")
         if result.stdout:
             print(result.stdout)
         return True
     except subprocess.CalledProcessError as e:
-        print(f"✗ {command}")
+        print(f"[ERROR] {command}")
         print(f"Error: {e.stderr}")
         return False
 
@@ -22,15 +22,15 @@ def main():
     
     # Collect static files
     print("Collecting static files...")
-    run_command("python manage.py collectstatic --noinput")
+    run_command(f"{sys.executable} manage.py collectstatic --noinput")
 
     # Run migrations
-    if not run_command("python manage.py migrate --noinput"):
+    if not run_command(f"{sys.executable} manage.py migrate --noinput"):
         print("Migration failed, but continuing...")
     
     # Start Django development server on 127.0.0.1:8080
     print("Starting Django development server on 127.0.0.1:8080...")
-    run_command("python manage.py runserver 127.0.0.1:8080")
+    run_command(f"{sys.executable} manage.py runserver 127.0.0.1:8080")
 
 if __name__ == "__main__":
     main()
