@@ -35,7 +35,6 @@ staticfiles/
 .env.development.local
 .env.test.local
 .env.production.local
-.env.*.local
 
 # IDE
 .vscode/
@@ -53,9 +52,8 @@ staticfiles/
 ehthumbs.db
 Thumbs.db
 
-# Database files - don't track database files in version control
-*.sqlite3
-*.db
+# Database
+nesako_ai_assistant.sqlite3
 
 # Logs
 *.log
@@ -65,22 +63,6 @@ logs/
 *.tmp
 *.temp
 .aider*
-.env
-.env
-.env
-.env
-.env
-.env
-.env
-.env
-.env
-.env
-.env
-.env
-.env
-.env
-.env
-.env
 .env
 .env
 .env

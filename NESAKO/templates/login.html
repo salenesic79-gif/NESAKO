@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NESAKO AI Login</title>
+    <style>
+        body { font-family: Arial; background: #667eea; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login { background: white; padding: 40px; border-radius: 10px; text-align: center; }
+        input { width: 200px; padding: 10px; margin: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        button { width: 220px; padding: 10px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .error { color: red; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="login">
+        <h2>🤖 NESAKO AI</h2>
+        <form method="post" action="/login/">
+            <div>
+                <input type="text" name="username" placeholder="Username" required>
+            </div>
+            <div>
+                <input type="password" name="password" placeholder="Password" required>
+            </div>
+            <div>
+                <button type="submit">Login</button>
+            </div>
+        </form>
+        <p>nesako / nesako2024</p>
+    </div>
+</body>
+</html>
