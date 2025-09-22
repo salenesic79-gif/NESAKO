@@ -1,20 +1,15 @@
 """
 WSGI config for NESAKO AI project.
-
-It exposes the WSGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/4.2/howto/deployment/wsgi/
 """
 
 import os
 import sys
 
-from django.core.wsgi import get_wsgi_application
+# Add current directory to Python path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE_DIR)
 
-# Remove c:\Users\PC from path to avoid conflicts with transport module
-if 'C:\\Users\\PC' in sys.path:
-    sys.path.remove('C:\\Users\\PC')
+from django.core.wsgi import get_wsgi_application
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
 

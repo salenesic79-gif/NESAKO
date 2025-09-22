@@ -17,10 +17,10 @@ def run_command(command):
         return False
 
 def main():
-    """Run Django migrations and start gunicorn"""
-    print("Starting NESAKO AI deployment...")
+    """Run Django migrations and start development server"""
+    print("Starting NESAKO AI development server...")
     
-    # Collect static files so /static/manifest.json and other assets are available
+    # Collect static files
     print("Collecting static files...")
     run_command("python manage.py collectstatic --noinput")
 
@@ -28,12 +28,9 @@ def main():
     if not run_command("python manage.py migrate --noinput"):
         print("Migration failed, but continuing...")
     
-    # Start gunicorn
-    port = os.environ.get('PORT', '10000')
-    gunicorn_cmd = f"gunicorn main:application --bind 0.0.0.0:{port} --workers 2 --timeout 120"
-    
-    print(f"Starting gunicorn on port {port}...")
-    os.system(gunicorn_cmd)
+    # Start Django development server on 127.0.0.1:8080
+    print("Starting Django development server on 127.0.0.1:8080...")
+    run_command("python manage.py runserver 127.0.0.1:8080")
 
 if __name__ == "__main__":
     main()
