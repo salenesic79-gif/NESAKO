@@ -16,7 +16,7 @@ if 'C:\\Users\\PC' in sys.path:
     sys.path.remove('C:\\Users\\PC')
 
 # Set the settings module
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'NESAKO.settings')
 
 if __name__ == '__main__':
     """Run the Django development server"""

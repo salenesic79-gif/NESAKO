@@ -132,7 +132,7 @@ TEMPLATES = [
 <<<<<<< HEAD
 WSGI_APPLICATION = 'NESAKO.wsgi.application'
 =======
-WSGI_APPLICATION = 'wsgi.application'
+WSGI_APPLICATION = 'NESAKO.wsgi.application'
 >>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
 
 # Database: use DATABASE_URL if provided (Render Postgres), else fallback to SQLite
