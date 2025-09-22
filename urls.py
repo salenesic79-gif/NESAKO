@@ -34,8 +34,8 @@ urlpatterns = [
     # Git sync endpoint
     path('api/git-sync/', csrf_exempt(git_sync_view), name='git_sync'),
     # Lessons endpoints
-    path('lessons', lessons_view, name='lessons'),
-    path('lessons/<int:lesson_id>/feedback', csrf_exempt(update_feedback), name='update_feedback'),
+    path('lessons/', lessons_view, name='lessons'),
+    path('lessons/<int:lesson_id>/feedback/', csrf_exempt(update_feedback), name='update_feedback'),
     # Web check endpoint
     path('web_check', csrf_exempt(web_check), name='web_check'),
     # Explicit manifest route (safety net)

@@ -49,7 +49,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'NESAKO.urls'
+ROOT_URLCONF = 'urls'
+>>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
 
 TEMPLATES = [
     {
@@ -67,7 +68,33 @@ TEMPLATES = [
     },
 ]
 
+<<<<<<< HEAD
 WSGI_APPLICATION = 'NESAKO.wsgi.application'
+=======
+ROOT_URLCONF = 'urls'
+>>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [BASE_DIR / 'templates'],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+<<<<<<< HEAD
+WSGI_APPLICATION = 'NESAKO.wsgi.application'
+=======
+WSGI_APPLICATION = 'wsgi.application'
+>>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
 
 # Database: use DATABASE_URL if provided (Render Postgres), else fallback to SQLite
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -102,6 +129,7 @@ STATICFILES_DIRS = [
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+<<<<<<< HEAD
 # Ensure static files are served in development
 if DEBUG:
     STATICFILES_DIRS = [
@@ -110,6 +138,8 @@ if DEBUG:
 else:
     STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+=======
+>>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

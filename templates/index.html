@@ -9,11 +9,24 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="NESAKO AI">
-    <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="{% static 'icons/icon-192x192.png' %}">
-    <link rel="icon" sizes="192x192" href="{% static 'icons/icon-192x192.png' %}">
-    <link rel="icon" sizes="512x512" href="{% static 'icons/icon-512x512.png' %}">
+    <link rel="manifest" href="/static/manifest.json">
+    <!-- Remove icon references until we have actual icons -->
+    
+    <!-- Fallback za ikone ako statički fajlovi ne rade -->
+    <script>
+        window.addEventListener('load', function() {
+            // Proveri da li su se ikone učitale
+            const icons = document.querySelectorAll('link[rel*="icon"]');
+            icons.forEach(icon => {
+                icon.onerror = function() {
+                    console.warn('Icon failed to load:', this.href);
+                    // Možete dodati fallback ikonu ovde
+                };
+            });
+        });
+    </script>
     <title>NESAKO AI Asistent</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
     <style>
         * {
             margin: 0;
@@ -1020,7 +1033,8 @@ Možete koristiti:
                 showLessons(data);
             } catch (e) {
                 console.error('Error loading lessons:', e);
-                addAIMessage('❌ Greška pri učitavanju naučenog. Proverite konzolu za detalje.', false);
+                // Koristimo postojeću addMessage funkciju umesto addAIMessage
+                addMessage('❌ Greška pri učitavanju naučenog. Proverite konzolu za detalje.', false);
             } finally {
                 updateStatus('Spreman za rad', false);
             }
@@ -1028,7 +1042,7 @@ Možete koristiti:
 
         function showLessons(data) {
             if (!data || !data.lessons || data.lessons.length === 0) {
-                addAIMessage('📚 Trenutno nema sačuvanih naučenih lekcija.', false);
+                addMessage('📚 Trenutno nema sačuvanih naučenih lekcija.', false);
                 return;
             }
         
@@ -1052,7 +1066,7 @@ Možete koristiti:
         
             lessonsMessage += '\nℹ️ *Sinhronizovano na svim uređajima*';
         
-            addAIMessage(lessonsMessage, false);
+            addMessage(lessonsMessage, false);
         }
 
         async function sendFeedback(lessonId, verdict) {
@@ -1252,6 +1266,11 @@ Možete koristiti:
             
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Fallback function if addAIMessage is called somewhere else
+        function addAIMessage(content, metadata = {}) {
+            addMessage(content, false, metadata);
         }
 
         function addMessage(content, isUser = false, metadata = {}) {
@@ -1874,28 +1893,33 @@ Možete koristiti:
         
         // Close hamburger menu when clicking outside
         document.addEventListener('click', function(e) {
-            const hamburgerMenu = document.querySelector('.hamburger-menu');
-            const hamburgerContent = document.getElementById('hamburger-content');
-            
-            if (hamburgerMenu && hamburgerContent) {
-                if (!hamburgerMenu.contains(e.target)) {
-                    hamburgerContent.classList.remove('show');
-                }
-            }
-            
-            // Also close history menu - fix null reference
-            const historyMenu = document.getElementById('history-menu');
-            if (historyMenu) {
-                // Check if click is outside the history menu
-                if (!historyMenu.contains(e.target)) {
-                    // Check if click is not on any element that might open the history menu
-                    const target = e.target;
-                    const isHistoryButton = target.closest('.history-btn') || 
-                                           target.classList.contains('history-btn');
-                    if (!isHistoryButton) {
-                        historyMenu.style.display = 'none';
+            try {
+                const hamburgerMenu = document.querySelector('.hamburger-menu');
+                const hamburgerContent = document.getElementById('hamburger-content');
+                
+                // Bezbedan pristup za hamburger meni
+                if (hamburgerMenu && hamburgerContent) {
+                    if (!hamburgerMenu.contains(e.target)) {
+                        hamburgerContent.classList.remove('show');
                     }
                 }
+                
+                // Bezbedan pristup za history meni
+                const historyMenu = document.getElementById('history-menu');
+                if (historyMenu) {
+                    // Check if click is outside the history menu
+                    if (!historyMenu.contains(e.target)) {
+                        // Check if click is not on any element that might open the history menu
+                        const target = e.target;
+                        const isHistoryButton = target.closest('.history-btn') || 
+                                               target.classList.contains('history-btn');
+                        if (!isHistoryButton) {
+                            historyMenu.style.display = 'none';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Click handler error:', error);
             }
         });
 
@@ -1956,18 +1980,46 @@ Možete koristiti:
         // Initialize - with error handling
         function initializeApp() {
             try {
-                if (typeof initializeSessions === 'function') {
-                    initializeSessions();
-                }
-                updateStats();
-                updateCharCounter();
-                setInterval(updateStats, 30000); // Update every 30 seconds
+                // Sačekaj malo da se DOM potpuno učita
+                setTimeout(function() {
+                    // Proveri da li svi kritični elementi postoje
+                    const requiredElements = [
+                        'user-input', 'send-btn', 'chat-messages', 
+                        'message-count', 'session-time'
+                    ];
+                    
+                    let allElementsFound = true;
+                    for (const elementId of requiredElements) {
+                        if (!document.getElementById(elementId)) {
+                            console.warn(`Element ${elementId} not found`);
+                            allElementsFound = false;
+                        }
+                    }
+                    
+                    if (allElementsFound) {
+                        if (typeof initializeSessions === 'function') {
+                            initializeSessions();
+                        }
+                        
+                        // Bezbedno ažuriranje statistika
+                        try {
+                            updateStats();
+                            updateCharCounter();
+                            setInterval(updateStats, 30000);
+                        } catch (statsError) {
+                            console.warn('Stats update error:', statsError);
+                        }
+                        
+                        // Fokusiraj input
+                        const userInput = document.getElementById('user-input');
+                        if (userInput) {
+                            userInput.focus();
+                        }
+                    } else {
+                        console.error('Neki kritični elementi nisu pronađeni');
+                    }
+                }, 100); // 100ms delay
                 
-                // Focus input on load
-                const userInput = document.getElementById('user-input');
-                if (userInput) {
-                    userInput.focus();
-                }
             } catch (error) {
                 console.error('Initialization error:', error);
             }

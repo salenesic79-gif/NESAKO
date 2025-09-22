@@ -31,8 +31,8 @@ urlpatterns = [
     # AI Assistant API (protected)
     path('api/chat/', csrf_exempt(DeepSeekAPI.as_view()), name='deepseek_chat'),
     # Lessons endpoints
-    path('lessons', lessons_view, name='lessons'),
-    path('lessons/<int:lesson_id>/feedback', csrf_exempt(update_feedback), name='update_feedback'),
+    path('lessons/', lessons_view, name='lessons'),
+    path('lessons/<int:lesson_id>/feedback/', csrf_exempt(update_feedback), name='update_feedback'),
     # Web check endpoint
     path('web_check', csrf_exempt(web_check), name='web_check'),
     # Explicit manifest route (safety net)
@@ -41,13 +41,14 @@ urlpatterns = [
     path('health', health_view, name='health'),
 ]
 
-# Serve static files in development and production
+# Serve static files in development
 if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
+    from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+    urlpatterns += staticfiles_urlpatterns()
 else:
     # Serve from STATIC_ROOT (collected static)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    # Additionally serve directly from STATICFILES_DIRS[0] as fallback (defensive in Render)
+    # Additionally serve directly from STATICFILES_DIRS[0] as fallback
     try:
         if settings.STATICFILES_DIRS and os.path.isdir(settings.STATICFILES_DIRS[0]):
             urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])

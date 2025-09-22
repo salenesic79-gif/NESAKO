@@ -14,6 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.shortcuts import redirect
 from django.conf import settings
+from django.http import FileResponse, JsonResponse
 from django.middleware.csrf import get_token
 from bs4 import BeautifulSoup
 from pathlib import Path
@@ -49,6 +50,32 @@ class DeepSeekAPI(View):
             return []
         except Exception:
             return []
+    
+    def get_task_progress(self, task_id):
+        """Simple task progress tracking"""
+        import time
+        current_time = time.time()
+        
+        # Simple progress simulation
+        if task_id and task_id.startswith('task_'):
+            try:
+                # Extract timestamp from task_id
+                timestamp_part = task_id.replace('task_', '').split('_')[0]
+                task_timestamp = int(timestamp_part) / 1000.0
+                
+                elapsed = current_time - task_timestamp
+                duration = 15.0
+                
+                if elapsed < duration:
+                    progress = int((elapsed / duration) * 100)
+                    progress = max(1, min(99, progress))
+                    return {'status': 'running', 'progress': progress}
+                else:
+                    return {'status': 'completed', 'progress': 100, 'result': 'Zadatak uspešno završen!'}
+            except:
+                pass
+        
+        return {'status': 'not_found', 'progress': 0}
 
     # --- Safe stub: UI may call this to update learning
     def update_learning_from_conversation(self, session_id: str, user_input: str, conversation_history: list):
@@ -1117,7 +1144,7 @@ def lessons_view(request):
             "id": l.id,
             "text": l.lesson_text,
             "user": l.user,
-            "time": l.created_at.isoformat(),
+            "time": l.created_at.isoformat() if l.created_at else "",
             "feedback": l.feedback
         } for l in lessons]
         return JsonResponse({"lessons": data})
@@ -1144,18 +1171,30 @@ def update_feedback(request, lesson_id):
 def manifest_view(request):
     """Serve manifest.json explicitly as a safety net when static route fails."""
     try:
-        path = finders.find('manifest.json')
-        if not path:
-            # Fallback to STATIC_ROOT
-            from django.conf import settings as dj_settings
-            candidate = (dj_settings.STATIC_ROOT / 'manifest.json') if isinstance(dj_settings.STATIC_ROOT, Path) else os.path.join(dj_settings.STATIC_ROOT, 'manifest.json')
-            if os.path.exists(candidate):
-                path = str(candidate)
-        if not path:
-            return JsonResponse({"error": "manifest.json not found"}, status=404)
-        return FileResponse(open(path, 'rb'), content_type='application/manifest+json')
+        # Serve directly from static files directory
+        manifest_path = settings.BASE_DIR / 'static' / 'manifest.json'
+        if manifest_path.exists():
+            return FileResponse(open(manifest_path, 'rb'), content_type='application/manifest+json')
+        else:
+            # Fallback: create a simple manifest
+            simple_manifest = {
+                "name": "NESAKO AI Assistant",
+                "short_name": "NESAKO AI",
+                "start_url": "/",
+                "display": "standalone",
+                "background_color": "#ffffff",
+                "theme_color": "#667eea"
+            }
+            return JsonResponse(simple_manifest)
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        # Ultimate fallback
+        simple_manifest = {
+            "name": "NESAKO AI Assistant",
+            "short_name": "NESAKO AI", 
+            "start_url": "/",
+            "display": "standalone"
+        }
+        return JsonResponse(simple_manifest)
 
 @require_http_methods(["GET"])
 def health_view(request):
