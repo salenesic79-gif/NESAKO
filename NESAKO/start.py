@@ -34,6 +34,9 @@ def main():
     
     print(f"Starting gunicorn on port {port}...")
     os.system(gunicorn_cmd)
+
+if __name__ == "__main__":
+    main()
 =======
     port = os.environ.get('PORT', '10000')
     gunicorn_cmd = f"gunicorn main:application --bind 0.0.0.0:{port} --workers 2 --timeout 120"
