@@ -1837,6 +1837,69 @@ Da li želite da nastavite? (potrebna je eksplicitna potvrda)"""
         except Exception as e:
             return f"Greška pri rollback operaciji: {str(e)}"
 
+    def generate_enhanced_fallback_response(self, user_input, tools_output, additional_data):
+        """Generate a comprehensive fallback response when AI services are unavailable"""
+        try:
+            # Start with a helpful message
+            response_parts = [
+                "🤖 **NESAKO AI - OFLAJN MOD**",
+                "",
+                "⚠️ *Glavni AI servis je trenutno nedostupan, ali evo šta mogu da uradim:*",
+                ""
+            ]
+            
+            # Add tools output if available
+            if tools_output:
+                response_parts.append("🔧 **REZULTATI ALATA:**")
+                response_parts.append(tools_output)
+                response_parts.append("")
+            
+            # Add additional data if available
+            if additional_data:
+                response_parts.append("📊 **DODATNE INFORMACIJE:**")
+                response_parts.append(additional_data)
+                response_parts.append("")
+            
+            # Analyze the user input to provide helpful guidance
+            input_lower = user_input.lower()
+            
+            # Provide context-specific help
+            if any(word in input_lower for word in ['kod', 'program', 'script', 'github']):
+                response_parts.append("💡 **SAVETI ZA KOD:**")
+                response_parts.append("- Proverite sintaksu i greške u kodu")
+                response_parts.append("- Koristite debugger za otklanjanje grešaka")
+                response_parts.append("- Testirajte kod u manjim delovima")
+                response_parts.append("- Konsultujte dokumentaciju za jezik/framework")
+                response_parts.append("")
+            
+            elif any(word in input_lower for word in ['sport', 'utakmica', 'rezultat', 'liga']):
+                response_parts.append("⚽ **SPORTSKE INFORMACIJE:**")
+                response_parts.append("- Posetite zvanične sajtove sportskih organizacija")
+                response_parts.append("- Koristite sportske aplikacije za ažurne rezultate")
+                response_parts.append("- Proverite vesti na pouzdanim sportskim portalima")
+                response_parts.append("")
+            
+            elif any(word in input_lower for word in ['vreme', 'temperatura', 'prognoza']):
+                response_parts.append("🌤️ **VREMENSKA PROGNOZA:**")
+                response_parts.append("- Koristite vebsajtove kao što su accuweather.com ili weather.com")
+                response_parts.append("- Proverite lokalne meteorološke stanice")
+                response_parts.append("")
+            
+            # Add general troubleshooting
+            response_parts.append("🔧 **REŠAVANJE PROBLEMA:**")
+            response_parts.append("- Pokušajte ponovo za nekoliko minuta")
+            response_parts.append("- Proverite internet konekciju")
+            response_parts.append("- Formulišite pitanje drugačije")
+            response_parts.append("")
+            
+            response_parts.append("🔄 *AI servis će biti ponovo dostupan uskoro*")
+            
+            return "\n".join(response_parts)
+            
+        except Exception as e:
+            # Ultimate fallback
+            return "🤖 Trenutno ne mogu da pristupim AI servisima. Molim pokušajte ponovo za nekoliko minuta. Za hitna pitanja, koristite direktne izvore informacija."
+
     def generate_task_explanation(self, user_input, tools_output):
         """Generate explanation of what was accomplished"""
         explanations = []

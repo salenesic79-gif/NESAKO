@@ -548,7 +548,7 @@ ODGOVORI U SKLADU SA PROTOKOLOM:
         } if DEEPSEEK_API_KEY else None
 
         try:
-            if headers:
+            if headers and DEEPSEEK_API_KEY:
                 r = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=30)
                 if r.ok:
                     data = r.json()
@@ -568,19 +568,49 @@ ODGOVORI U SKLADU SA PROTOKOLOM:
                         except Exception:
                             pass
                         return validated_content
-                # ako API ne odgovori korektno
-                return "Trenutno ne mogu da dohvatim odgovor od AI servisa. Molim pokušajte ponovo."
+                # ako API ne odgovori korektno, koristimo poboljšani fallback
+                return self.get_enhanced_fallback_response(user_input)
             else:
-                # Fallback bez API ključa - beži od izmišljanja
-                fallback_response = "Trenutno nemam pristup AI servisu za generisanje odgovora. Molim pokušajte ponovo kasnije ili koristite web pretragu za tačne informacije."
-                try:
-                    self.learn_from_conversation(user_input, fallback_response)
-                    self.memory.store_conversation(user_input, fallback_response)
-                except Exception:
-                    pass
-                return fallback_response
+                # Fallback bez API ključa
+                return self.get_enhanced_fallback_response(user_input)
         except Exception as e:
-            return f"Trenutno ne mogu da obradim vaš zahtev zbog tehničke greške: {str(e)}"
+            return self.get_enhanced_fallback_response(user_input)
+
+    def get_enhanced_fallback_response(self, user_input: str) -> str:
+        """Enhanced fallback response when AI services are completely unavailable"""
+        # Provide helpful, non-AI generated responses based on common patterns
+        input_lower = user_input.lower()
+        
+        # Pattern-based responses
+        if any(word in input_lower for word in ['pozdrav', 'zdravo', 'ćao', 'hello', 'hi']):
+            return "Zdravo! Trenutno imam tehničke poteškoće sa AI servisima. Molim pokušajte ponovo za nekoliko minuta."
+        
+        elif any(word in input_lower for word in ['hvala', 'thanks', 'thank you']):
+            return "Nema na čemu! Žao mi je što trenutno ne mogu da pružim potpuniji odgovor zbog tehničkih problema."
+        
+        elif any(word in input_lower for word in ['pomoć', 'help', 'pomoc']):
+            return """🤖 **POMOĆ - TEHNIČKI PROBLEMI**
+
+Trenutno ne mogu da pristupim naprednim AI servisima. Evo šta možete uraditi:
+
+1. **Pokušajte ponovo za 5-10 minuta** - problem može biti privremen
+2. **Proverite internet konekciju** 
+3. **Koristite specifičnija pitanja** kada se servis vrati
+4. **Za hitne slučajeve** koristite direktne izvore informacija
+
+*Servis će biti ponovo dostupan što je pre moguće*"""
+        
+        # Default helpful response
+        return """🤖 **NESAKO AI - TEHNIČKI PREKID**
+
+Trenutno ne mogu da pristupim glavnim AI servisima. Ovo je privremeni problem koji će biti rešen u najkraćem mogućem roku.
+
+**Šta možete uraditi:**
+- Pokušajte ponovo za nekoliko minuta
+- Koristite web pretragu za trenutne informacije
+- Kontaktirajte administratora ako se problem nastavi
+
+*Hvala na strpljenju!*"""
 
     def validate_response_for_hallucinations(self, response: str, user_input: str) -> str:
         """
