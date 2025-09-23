@@ -30,17 +30,6 @@ def main():
     
     port = os.environ.get('PORT', '10000')
     gunicorn_cmd = f"gunicorn main:application --bind 0.0.0.0:{port} --workers 2 --timeout 120"
->>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
-    
-    print(f"Starting gunicorn on port {port}...")
-    os.system(gunicorn_cmd)
-
-if __name__ == "__main__":
-    main()
-=======
-    port = os.environ.get('PORT', '10000')
-    gunicorn_cmd = f"gunicorn main:application --bind 0.0.0.0:{port} --workers 2 --timeout 120"
->>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
     
     print(f"Starting gunicorn on port {port}...")
     os.system(gunicorn_cmd)
