@@ -1,8 +1,8 @@
 // Simple Service Worker for NESAKO AI
-const CACHE_NAME = 'nesako-ai-v3';
+const CACHE_NAME = 'nesako-ai-v4';
 const urlsToCache = [
   '/',
-  '/static/manifest.json',
+  '/manifest.json',
   '/static/icons/icon-192x192.png',
   '/static/icons/icon-512x512.png'
 ];

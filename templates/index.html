@@ -9,7 +9,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="NESAKO AI">
-    <link rel="manifest" href="/static/manifest.json">
+    <link rel="manifest" href="/manifest.json">
     <!-- Remove icon references until we have actual icons -->
     
     <!-- Fallback za ikone ako statički fajlovi ne rade -->
@@ -2321,7 +2321,7 @@ Možete koristiti:
                     <div class="task-progress">
                         <div class="task-progress-fill" style="width: ${task.progress}%; background: ${statusColor}"></div>
                     </div>
-                    ${task.status === 'running' ? `<button onclick="cancelTask('${task.id}')" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; margin-top: 5px; cursor: pointer;">Otkaži</button>` : ''}
+                    ${task.status === 'running' ? '<button onclick="cancelTask(\'' + task.id + '\')" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; margin-top: 5px; cursor: pointer;">Otkaži</button>' : ''}
                 `;
                 
                 taskList.appendChild(taskItem);
