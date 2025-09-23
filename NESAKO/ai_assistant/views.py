@@ -1058,43 +1058,38 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
                     })
                     
             except requests.exceptions.Timeout:
-                print("ERROR: API request timeout - using NESAKO fallback")
-                ai_response = self.nesako.get_response(user_input)
+                print("ERROR: API request timeout - using enhanced fallback")
+                ai_response = self.generate_enhanced_fallback_response(user_input, tools_output, additional_data)
                 return JsonResponse({
                     'response': ai_response,
                     'status': 'success',
                     'timestamp': current_time.isoformat(),
-                    'mode': 'nesako_fallback_timeout',
-                    'note': 'NESAKO fallback used due to API timeout'
+                    'mode': 'enhanced_fallback_timeout',
+                    'note': 'Enhanced fallback used due to API timeout'
                 })
                 
             except requests.exceptions.ConnectionError:
-                print("ERROR: API connection error - using NESAKO fallback")
-                ai_response = self.nesako.get_response(user_input)
+                print("ERROR: API connection error - using enhanced fallback")
+                ai_response = self.generate_enhanced_fallback_response(user_input, tools_output, additional_data)
                 return JsonResponse({
                     'response': ai_response,
                     'status': 'success',
                     'timestamp': current_time.isoformat(),
-                    'mode': 'nesako_fallback_connection',
-                    'note': 'NESAKO fallback used due to connection error'
+                    'mode': 'enhanced_fallback_connection',
+                    'note': 'Enhanced fallback used due to connection error'
                 })
                 
             except Exception as api_error:
-                print(f"ERROR: Unexpected API error: {api_error} - using NESAKO fallback")
-                ai_response = self.nesako.get_response(user_input)
-                # Add context from tools and additional data for consistency
-                if additional_data:
-                    ai_response = f"{additional_data}\n\n{ai_response}"
-                if tools_output:
-                    ai_response = f"{tools_output}\n\n{ai_response}"
+                print(f"ERROR: Unexpected API error: {api_error} - using enhanced fallback")
+                ai_response = self.generate_enhanced_fallback_response(user_input, tools_output, additional_data)
                 return JsonResponse({
                     'response': ai_response,
                     'status': 'success',
                     'timestamp': current_time.isoformat(),
-                    'mode': 'nesako_fallback_error',
+                    'mode': 'enhanced_fallback_error',
                     'tools_used': bool(tools_output),
                     'context_aware': bool(context_summary),
-                    'note': f'NESAKO fallback used due to API error: {str(api_error)}'
+                    'note': f'Enhanced fallback used due to API error: {str(api_error)}'
                 })
                 
         except json.JSONDecodeError as e:
