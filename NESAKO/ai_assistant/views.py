@@ -876,15 +876,24 @@ class DeepSeekAPI(View):
                 if recent_topics:
                     context_summary = f"\nKONTEKST RAZGOVORA:\nPoslednje teme: {' | '.join(recent_topics)}"
             
-            # DeepSeek API
-            API_URL = "https://api.deepseek.com/v1/chat/completions"
-            API_KEY = os.environ.get('DEEPSEEK_API_KEY')
+            # DeepSeek API configuration
+            API_URL = getattr(settings, 'DEEPSEEK_API_URL', 'https://api.deepseek.com/v1/chat/completions')
+            API_KEY = getattr(settings, 'DEEPSEEK_API_KEY', '')
             
-            if not API_KEY:
+            # Provera API key konfiguracije
+            if not API_KEY or API_KEY.strip() == '':
+                print("❌ ERROR: DeepSeek API key nije konfigurisan ili je prazan")
+                # Koristimo enhanced fallback umesto da vratimo grešku
+                ai_response = self.generate_enhanced_fallback_response(user_input, tools_output, additional_data)
                 return JsonResponse({
-                    'error': 'DeepSeek API key nije konfigurisan',
-                    'status': 'error'
-                }, status=500)
+                    'response': ai_response,
+                    'status': 'success',
+                    'timestamp': current_time.isoformat(),
+                    'mode': 'api_key_missing',
+                    'note': 'API key nije konfigurisan - koristi se fallback'
+                })
+            
+            print(f"✅ API Key je konfigurisan, pokušavam pozvati DeepSeek API...")
             
             headers = {
                 "Authorization": f"Bearer {API_KEY}",

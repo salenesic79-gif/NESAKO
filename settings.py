@@ -111,8 +111,21 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# DeepSeek API Key
-DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+# DeepSeek API Configuration
+DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+
+# Debug API key configuration
+if not DEEPSEEK_API_KEY:
+    print("⚠️  WARNING: DEEPSEEK_API_KEY nije konfigurisan!")
+    print("ℹ️   Sistem će koristiti fallback mode bez AI servisa")
+else:
+    print(f"✅ DEEPSEEK_API_KEY je konfigurisan (dužina: {len(DEEPSEEK_API_KEY)})")
+
+# SerpAPI Configuration
+SERPAPI_API_KEY = os.getenv('SERPAPI_API_KEY', '')
+if not SERPAPI_API_KEY:
+    print("⚠️  WARNING: SERPAPI_API_KEY nije konfigurisan - web pretraga onemogućena")
 
 # Private access settings
 NESAKO_USERNAME = os.getenv('NESAKO_USERNAME', 'nesako')
