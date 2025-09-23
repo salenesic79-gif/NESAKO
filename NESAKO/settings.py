@@ -1,5 +1,61 @@
+import os
+from pathlib import Path
+import dj_database_url
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Jedinstveni identifikatori za NESAKO AI
+APP_NAME = 'nesako-ai-assistant'
+APP_VERSION = 'v1.0'
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.getenv('SECRET_KEY', 'nesako-ai-secret-key-change-in-production')
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = os.getenv('DEBUG', 'True') == 'True'
+
+# Render deployment configuration
+ALLOWED_HOSTS = ['*']  # Za Render i mobilnu podršku
+
+# Force HTTP for local development
+USE_TLS = False
+SECURE_SSL_REDIRECT = False
+SECURE_PROXY_SSL_HEADER = None
+
+# Application definition
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'ai_assistant',
+]
+
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+# Dodatna konfiguracija za development
+if DEBUG:
+    import mimetypes
+    mimetypes.add_type("text/css", ".css", True)
+    mimetypes.add_type("application/javascript", ".js", True)
+
 ROOT_URLCONF = 'urls'
->>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
 
 TEMPLATES = [
     {
@@ -17,33 +73,7 @@ TEMPLATES = [
     },
 ]
 
-<<<<<<< HEAD
 WSGI_APPLICATION = 'NESAKO.wsgi.application'
-=======
-ROOT_URLCONF = 'urls'
->>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
-
-TEMPLATES = [
-    {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
-            ],
-        },
-    },
-]
-
-<<<<<<< HEAD
-WSGI_APPLICATION = 'NESAKO.wsgi.application'
-=======
-WSGI_APPLICATION = 'NESAKO.wsgi.application'
->>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
 
 # Database: use DATABASE_URL if provided (Render Postgres), else fallback to SQLite
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -78,17 +108,6 @@ STATICFILES_DIRS = [
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-<<<<<<< HEAD
-# Ensure static files are served in development
-if DEBUG:
-    STATICFILES_DIRS = [
-        BASE_DIR / 'static',
-    ]
-else:
-    STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-=======
->>>>>>> 024e02e54e8b229055ce5d604b8de597177ba75b
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
