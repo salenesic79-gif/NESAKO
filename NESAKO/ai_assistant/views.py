@@ -947,6 +947,9 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
             print(f"Payload size: {len(str(payload))}")
             
             try:
+                print(f"🔧 DEBUG: Šaljem zahtev na {API_URL}")
+                print(f"🔧 DEBUG: Payload veličina: {len(str(payload))} karaktera")
+                
                 response = requests.post(
                     API_URL,
                     headers=headers,
@@ -954,8 +957,9 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
                     timeout=60
                 )
                 
-                print(f"DeepSeek response status: {response.status_code}")
-                print(f"Response headers: {response.headers}")
+                print(f"🔧 DEBUG: DeepSeek response status: {response.status_code}")
+                if response.status_code != 200:
+                    print(f"🔧 DEBUG: Response text: {response.text[:500]}")
                 
                 if response.status_code == 200:
                     result = response.json()
