@@ -28,8 +28,9 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     # Glavna stranica za NESAKO AI (protected)
     path('', ProtectedTemplateView.as_view(template_name='index.html'), name='home'),
-    # AI Assistant API (protected)
+    # AI Assistant API (protected) - both with and without trailing slash
     path('api/chat/', csrf_exempt(DeepSeekAPI.as_view()), name='deepseek_chat'),
+    path('api/chat', csrf_exempt(DeepSeekAPI.as_view()), name='deepseek_chat_no_slash'),
     # Lessons endpoints
     path('lessons/', lessons_view, name='lessons'),
     path('lessons/<int:lesson_id>/feedback/', csrf_exempt(update_feedback), name='update_feedback'),

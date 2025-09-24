@@ -72,16 +72,13 @@ class NESAKOChatbot:
     def __init__(self):
         self.memory = NESAKOMemoryORM()
         self.search = NESAKOSearch()
-        # Poboljšani sistem prompt - jednostavniji i fokusiraniji
+        # Poboljšani sistem prompt za prirodnije odgovore
         self.system_prompt = (
-            "TI SI NESAKO - KORISAN ASISTENT\n\n"
-            "BUDI PRIRODAN I KORISTAN:\n"
-            "- Odgovaraj direktno na pitanja\n"
-            "- Koristi jednostavan srpski jezik\n"
-            "- Budi konkretan i informativan\n"
-            "- Ako ne znaš odgovor, reci to jednostavno\n"
-            "- Za sportska pitanja koristi web pretragu\n"
-            "- Izbegavaj duge uvode i nepotrebne detalje\n"
+            "Ti si NESAKO - koristan asistent. "
+            "Odgovaraj prirodno i jednostavno na srpskom jeziku. "
+            "Budi direktan i konkretan. "
+            "Ako ne znaš odgovor, reci to jednostavno. "
+            "Izbegavaj duge uvode i tehničke detalje."
         )
 
         # Ključne reči za detekciju sportskih tema
@@ -465,12 +462,11 @@ class NESAKOChatbot:
         if not results:
             return "Nisam pronašao relevantne rezultate."
         
-        response = ""
-        for i, result in enumerate(results, 1):
-            if len(result) > 150:
-                result = result[:147] + "..."
-            response += f"{result}\n\n"
-        return response.strip()
+        # Vrati samo prvi rezultat za jednostavniji odgovor
+        result = results[0]
+        if len(result) > 200:
+            result = result[:197] + "..."
+        return result
 
     def get_response(self, user_input: str) -> str:
         # Prvo proveri da li je pitanje sportske prirode
@@ -479,9 +475,9 @@ class NESAKOChatbot:
         if is_sports_question:
             results = self.search_web(user_input)
             if results:
-                formatted = self.format_search_results(results)
-                return formatted  # Bez dodatnih labela
-            return "Trenutno nemam ažurne informacije. Proverite na zvaničnim sajtovima."
+                # Vrati samo prvi rezultat bez dodatnih labela
+                return results[0] if results else "Nisam pronašao informacije."
+            return "Trenutno nemam ažurne informacije."
 
         # Proveri naučene odgovore
         learned = self.memory.get_learned_response(user_input)
@@ -586,15 +582,9 @@ Trenutno ne mogu da pristupim glavnim AI servisima. Ovo je privremeni problem ko
 
     def validate_response_for_hallucinations(self, response: str, user_input: str) -> str:
         """
-        Simplified validation - remove most disclaimers for cleaner responses
+        Simplified validation - remove all disclaimers for cleaner responses
         """
-        # Dodajemo disclaimer samo za kritične faktualne tvrdnje
-        critical_keywords = ['sigurno znam', 'definitivno je', '100% tačno', 'garantujem']
-        response_lower = response.lower()
-        
-        if any(claim in response_lower for claim in critical_keywords):
-            return response + "\n\n*Ovo je AI generisan odgovor - preporučujem proveru informacija.*"
-        
+        # Ukloni sve disclaimere za čistije odgovore
         return response
 
     def remember_instruction(self, instruction: str) -> str:
