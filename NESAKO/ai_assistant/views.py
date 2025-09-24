@@ -900,32 +900,17 @@ class DeepSeekAPI(View):
                 "Content-Type": "application/json"
             }
             
-            # Poboljšani sistem prompt sa fokusom na kvalitetne odgovore
-            system_message = f"""Ti si NESAKO AI - INTELIGENTNI ASISTENT
+            # Pojednostavljen sistem prompt
+            system_message = f"""Ti si NESAKO - koristan asistent. 
+Odgovaraj direktno i korisno na pitanja. 
+Koristi srpski jezik. 
+Budi prirodan u komunikaciji.
 
-TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
+Trenutno vreme: {current_time_str}, {day_serbian}
 
-🧠 MOJE SPOSOBNOSTI:
-• Analiza koda i GitHub repozitorijuma
-• Web pretraga za ažurne informacije
-• Pomoć u programiranju i razvoju
-• Odgovori na opšta i specijalizovana pitanja
+Dostupni alati: {tools_output if tools_output else 'Nema dodatnih alata'}
 
-💡 STRATEGIJA ODGOVARANJA:
-1. RAZUMI PITANJE - prvo shvati šta korisnik stvarno pita
-2. BUDI KORISAN - fokusiraj se na praktične informacije
-3. BUDI JASAN - koristi jednostavan i razumljiv jezik
-4. BUDI KONKRETAN - izbegavaj opšte fraze
-5. POVEŽI SA KONTEKSTOM - koristi dostupne alate i informacije
-
-🧩 DOSTUPNI ALATI I INFORMACIJE:
-{command_output if command_output else ''}
-{module_output if module_output else ''}
-{file_output if file_output else ''}
-{tools_output if tools_output else ''}
-{additional_data}
-
-🎯 CILJ: Pružiti kvalitetne, korisne i tačne odgovore koji stvarno pomažu korisniku."""
+Odgovori konkretno na: {user_input}"""
 
             # Optimizovani API poziv za bolje odgovore
             payload = {

@@ -471,16 +471,14 @@ class NESAKOChatbot:
     # --- Novo: formatiranje i glavna logika odgovora ---
     def format_search_results(self, results: List[str]) -> str:
         if not results:
-            return "Nisam pronašao relevantne rezultate pretrage."
+            return "Nisam pronašao relevantne rezultate."
         
-        response = "Rezultati web pretrage:\n\n"
+        response = ""
         for i, result in enumerate(results, 1):
-            # Limit each result to prevent overly long responses
-            if len(result) > 200:
-                result = result[:197] + "..."
-            response += f"{i}. {result}\n"
-        response += "\nIzvor: Google Search API\n\n⚠️ *Ove informacije mogu biti neažurne ili netačne*"
-        return response
+            if len(result) > 150:
+                result = result[:147] + "..."
+            response += f"{result}\n\n"
+        return response.strip()
 
     def get_response(self, user_input: str) -> str:
         # Prvo proveri da li je pitanje sportske prirode
@@ -490,8 +488,8 @@ class NESAKOChatbot:
             results = self.search_web(user_input)
             if results:
                 formatted = self.format_search_results(results)
-                return f"🔍 **Sportske informacije sa weba:**\n\n{formatted}"
-            return "Trenutno nemam pristup ažurnim sportskim informacijama. Molim proverite na zvaničnim sportskim sajtovima."
+                return formatted  # Bez dodatnih labela
+            return "Trenutno nemam ažurne informacije. Proverite na zvaničnim sajtovima."
 
         # Proveri naučene odgovore
         learned = self.memory.get_learned_response(user_input)
@@ -504,39 +502,24 @@ class NESAKOChatbot:
             return direct_mem
 
         # Generiši odgovor koristeći DeepSeek
-        response = self.generate_response(user_input)
-        
-        # Dodaj disclaimer samo ako je potrebno
-        if is_sports_question or any(word in user_input.lower() for word in ['tačno', 'sigurno', 'proveri']):
-            response += "\n\nℹ️ *Molim proverite informacije na pouzdanim izvorima*"
-        
-        return response
+        return self.generate_response(user_input)
 
     def generate_response(self, user_input: str) -> str:
-        # Poboljšani sistem prompt sa boljom ravnotežom između kreativnosti i tačnosti
-        enhanced_system_prompt = self.system_prompt + """
-        
-DODATNA UPUTSTVA ZA KVALITETNE ODGOVORE:
-1. BUDI KORISAN I INFORMATIVAN - fokusiraj se na suštinu pitanja
-2. KORISTI PRIRODAN JEZIK - odgovori kao da razgovaraš sa čovekom
-3. BUDI PRECIZAN - izbegavaj nejasne ili generičke fraze
-4. AKO JE PITANJE KOMPLEKSNO - podeli odgovor na logičke delove
-5. DAJ PRAKTIČNE SAVETE - fokusiraj se na rešenja, ne samo na teoriju
-6. BUDI PROAKTIVAN - predloži sledeće korake ako je relevantno
-"""
+        # Pojednostavljen sistem prompt
+        enhanced_system_prompt = self.system_prompt
 
-        # Optimizovani parametri za bolje odgovore
+        # Optimizovani parametri za prirodnije odgovore
         payload = {
             "model": "deepseek-chat",
             "messages": [
                 {"role": "system", "content": enhanced_system_prompt},
                 {"role": "user", "content": user_input}
             ],
-            "temperature": 0.7,  # Povećana temperatura za kreativnije odgovore
-            "max_tokens": 800,   # Više tokena za detaljnije odgovore
-            "top_p": 0.9,        # Veći top_p za širi izbor reči
-            "frequency_penalty": 0.3,  # Umerena penalizacija za ponavljanje
-            "presence_penalty": 0.3    # Umerena penalizacija za nove koncepte
+            "temperature": 0.8,  # Viša temperatura za prirodnije odgovore
+            "max_tokens": 500,   # Manje tokena za konciznije odgovore
+            "top_p": 0.95,       # Veći top_p za širi izbor
+            "frequency_penalty": 0.1,  # Manja penalizacija
+            "presence_penalty": 0.1    # Manja penalizacija
         }
 
         headers = {
@@ -611,60 +594,14 @@ Trenutno ne mogu da pristupim glavnim AI servisima. Ovo je privremeni problem ko
 
     def validate_response_for_hallucinations(self, response: str, user_input: str) -> str:
         """
-        Validates the response for potential hallucinations and adds disclaimers
+        Simplified validation - remove most disclaimers for cleaner responses
         """
+        # Dodajemo disclaimer samo za kritične faktualne tvrdnje
+        critical_keywords = ['sigurno znam', 'definitivno je', '100% tačno', 'garantujem']
         response_lower = response.lower()
         
-        # Lista zabranjenih izjava - stvari koje AI NE SME da tvrdi
-        forbidden_claims = [
-            'sigurno znam', 'definitivno je', '100% tačno', 'nema sumnje',
-            'potvrđeno je', 'zvanični podaci', 'provereno je', 'garantujem'
-        ]
-        
-        # Lista faktualnih pojmova koji zahtevaju proveru
-        factual_triggers = [
-            'je', 'su', 'ima', 'bio', 'bila', 'bilo', 'tačno', 'rezultat',
-            'pobedio', 'izgubio', 'utakmica', 'šampion', 'takmičenje', 'statistika',
-            'broj', 'podatak', 'istina', 'činjenica', 'datum', 'godina', 'cena',
-            'cene', 'evra', 'dolara', 'cena', 'cene'
-        ]
-        
-        # Provera za zabranjene izjave
-        has_forbidden_claims = any(claim in response_lower for claim in forbidden_claims)
-        
-        # Provera za faktualne tvrdnje
-        has_factual_claims = any(keyword in response_lower for keyword in factual_triggers)
-        
-        # Provera za sportske pojmove
-        sports_keywords = ['utakmica', 'rezultat', 'tim', 'igrač', 'liga', 'šampionat', 'gol', 'asist']
-        has_sports_content = any(keyword in response_lower for keyword in sports_keywords)
-        
-        # Dodaj odgovarajuće disclaimere
-        if has_forbidden_claims:
-            disclaimer = "\n\n🚨 **UPOZORENJE:** Ovo je AI generisan odgovor. Molim proverite sve informacije na zvaničnim izvorima pre nego što ih koristite."
-            if disclaimer not in response:
-                response += disclaimer
-        
-        elif has_factual_claims:
-            disclaimer = "\n\n⚠️ **NAPOMENA:** Ove informacije su generisane od strane AI-a. Molim proverite tačnost na pouzdanim izvorima."
-            if disclaimer not in response:
-                response += disclaimer
-        
-        elif has_sports_content:
-            disclaimer = "\n\n⚽ **SPORTSKE INFORMACIJE:** Za najtačnije i najažurnije sportske informacije, molim posetite zvanične sajtove sportskih organizacija."
-            if disclaimer not in response:
-                response += disclaimer
-        else:
-            # Opšti disclaimer za sve AI odgovore
-            disclaimer = "\n\nℹ️ **NAPOMENA:** Ovo je AI generisan odgovor. Preporučujem proveru kritičnih informacija na zvaničnim izvorima."
-            if disclaimer not in response:
-                response += disclaimer
-        
-        # Dodatna provera za preteranu sigurnost
-        if 'sigurno' in response_lower or 'definitivno' in response_lower:
-            caution = "\n\n🔍 **SAVET:** Za potpuno tačne informacije, uvek proverite sa više nezavisnih izvora."
-            if caution not in response:
-                response += caution
+        if any(claim in response_lower for claim in critical_keywords):
+            return response + "\n\n*Ovo je AI generisan odgovor - preporučujem proveru informacija.*"
         
         return response
 
