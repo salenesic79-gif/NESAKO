@@ -87,14 +87,8 @@ class DeepSeekAPI(View):
         
     def dispatch(self, request, *args, **kwargs):
         # Skip authentication for testing - REMOVE IN PRODUCTION
-        # Check authentication for API access
-        if not request.session.get('authenticated'):
-            # Auto-authenticate for testing
-            request.session['authenticated'] = True
-            # return JsonResponse({
-            #     'error': 'Neautorizovan pristup - molim vas ulogujte se',
-            #     'status': 'unauthorized'
-            # }, status=401)
+        # Auto-authenticate all requests for testing
+        request.session['authenticated'] = True
         return super().dispatch(request, *args, **kwargs)
     def get_github_content(self, repo_url, path=""):
         """Tool: Pristup GitHub repozitorijumu za analizu koda"""

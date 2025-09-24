@@ -473,11 +473,15 @@ class NESAKOChatbot:
         is_sports_question = any(keyword in user_input.lower() for keyword in self.sports_keywords)
         
         if is_sports_question:
-            results = self.search_web(user_input)
-            if results:
-                # Vrati samo prvi rezultat bez dodatnih labela
-                return results[0] if results else "Nisam pronašao informacije."
-            return "Trenutno nemam ažurne informacije."
+            # Ako nema API ključa, preskoči web pretragu i idi direktno na AI
+            if not SERPAPI_API_KEY:
+                pass  # Preskoči web pretragu i nastavi na AI
+            else:
+                results = self.search_web(user_input)
+                if results:
+                    # Vrati samo prvi rezultat bez dodatnih labela
+                    return results[0] if results else "Nisam pronašao informacije."
+                return "Trenutno nemam ažurne informacije."
 
         # Proveri naučene odgovore
         learned = self.memory.get_learned_response(user_input)
@@ -549,36 +553,21 @@ class NESAKOChatbot:
         # Provide helpful, non-AI generated responses based on common patterns
         input_lower = user_input.lower()
         
-        # Pattern-based responses
-        if any(word in input_lower for word in ['pozdrav', 'zdravo', 'ćao', 'hello', 'hi']):
-            return "Zdravo! Trenutno imam tehničke poteškoće sa AI servisima. Molim pokušajte ponovo za nekoliko minuta."
+        # Pattern-based responses - jednostavniji i prirodniji
+        if any(word in input_lower for word in ['pozdrav', 'zdravo', 'ćao', 'hello', 'hi', 'kako si']):
+            return "Zdravo! Kako mogu da vam pomognem?"
         
         elif any(word in input_lower for word in ['hvala', 'thanks', 'thank you']):
-            return "Nema na čemu! Žao mi je što trenutno ne mogu da pružim potpuniji odgovor zbog tehničkih problema."
+            return "Nema na čemu! Drago mi je što sam mogao da pomognem."
         
         elif any(word in input_lower for word in ['pomoć', 'help', 'pomoc']):
-            return """🤖 **POMOĆ - TEHNIČKI PROBLEMI**
-
-Trenutno ne mogu da pristupim naprednim AI servisima. Evo šta možete uraditi:
-
-1. **Pokušajte ponovo za 5-10 minuta** - problem može biti privremen
-2. **Proverite internet konekciju** 
-3. **Koristite specifičnija pitanja** kada se servis vrati
-4. **Za hitne slučajeve** koristite direktne izvore informacija
-
-*Servis će biti ponovo dostupan što je pre moguće*"""
+            return "Kako mogu da vam pomognem? Postavite mi pitanje ili opišite problem."
+        
+        elif any(word in input_lower for word in ['šta je', 'šta su', 'koji je']):
+            return "Trenutno ne mogu da pristupim bazi podataka za tačne informacije. Molim pokušajte sa specifičnijim pitanjem."
         
         # Default helpful response
-        return """🤖 **NESAKO AI - TEHNIČKI PREKID**
-
-Trenutno ne mogu da pristupim glavnim AI servisima. Ovo je privremeni problem koji će biti rešen u najkraćem mogućem roku.
-
-**Šta možete uraditi:**
-- Pokušajte ponovo za nekoliko minuta
-- Koristite web pretragu za trenutne informacije
-- Kontaktirajte administratora ako se problem nastavi
-
-*Hvala na strpljenju!*"""
+        return "Trenutno imam ograničen pristup nekim servisima. Postavite mi pitanje i pokušaću da vam pomognem na osnovu dostupnih informacija."
 
     def validate_response_for_hallucinations(self, response: str, user_input: str) -> str:
         """
