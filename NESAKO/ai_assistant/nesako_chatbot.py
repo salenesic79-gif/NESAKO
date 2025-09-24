@@ -72,24 +72,16 @@ class NESAKOChatbot:
     def __init__(self):
         self.memory = NESAKOMemoryORM()
         self.search = NESAKOSearch()
-        # Poboljšani sistem prompt sa fokusom na kvalitetne i korisne odgovore
+        # Poboljšani sistem prompt - jednostavniji i fokusiraniji
         self.system_prompt = (
-            "TI SI NESAKO - INTELIGENTNI ASISTENT SA KORISNIM I TAČNIM ODGOVORIMA\n\n"
-            "OSNOVNA PRAVILA:\n"
-            "1. DAJ KORISNE, PRECIZNE I KONTEKSTUALNO RELEVANTNE ODGOVORE\n"
-            "2. BUDI PRIRODAN U KOMUNIKACIJI - KORISTI SRPSKI JEZIK\n"
-            "3. AKO NE ZNAŠ ODGOVOR, ISKRENO RECI I PONUDI ALTERNATIVNU POMOĆ\n"
-            "4. ZA SPORTSKA PITANJA KORISTI WEB PRETRAGU ZA AŽURNE INFORMACIJE\n"
-            "5. IZBEGAVAJ GENERIČKE I NEKORISNE ODGOVORE\n"
-            "6. FOKUSIRAJ SE NA KONKRETNE INFORMACIJE KOJE KORISNIK TRAŽI\n"
-            "7. KORISTI LOGIČKO RAZMIŠLJANJE ZA KOMPLEKSNA PITANJA\n"
-            "8. BUDI KONCIZAN ALI OBUHVATAN U ODGOVORIMA\n\n"
-            "STRATEGIJA ODGOVARANJA:\n"
-            "- Prvo razumi suštinu pitanja\n"
-            "- Odgovori direktno na pitanje\n"
-            "- Daj konkretne primere ako je potrebno\n"
-            "- Objasni složene koncepte jednostavnim jezikom\n"
-            "- Poveži sa prethodnim konverzacijama ako je relevantno\n"
+            "TI SI NESAKO - KORISAN ASISTENT\n\n"
+            "BUDI PRIRODAN I KORISTAN:\n"
+            "- Odgovaraj direktno na pitanja\n"
+            "- Koristi jednostavan srpski jezik\n"
+            "- Budi konkretan i informativan\n"
+            "- Ako ne znaš odgovor, reci to jednostavno\n"
+            "- Za sportska pitanja koristi web pretragu\n"
+            "- Izbegavaj duge uvode i nepotrebne detalje\n"
         )
 
         # Ključne reči za detekciju sportskih tema
@@ -515,11 +507,11 @@ class NESAKOChatbot:
                 {"role": "system", "content": enhanced_system_prompt},
                 {"role": "user", "content": user_input}
             ],
-            "temperature": 0.8,  # Viša temperatura za prirodnije odgovore
-            "max_tokens": 500,   # Manje tokena za konciznije odgovore
+            "temperature": 0.9,  # Viša temperatura za prirodnije odgovore
+            "max_tokens": 800,   # Više tokena za bolje odgovore
             "top_p": 0.95,       # Veći top_p za širi izbor
-            "frequency_penalty": 0.1,  # Manja penalizacija
-            "presence_penalty": 0.1    # Manja penalizacija
+            "frequency_penalty": 0.0,  # Bez penalizacije
+            "presence_penalty": 0.0    # Bez penalizacije
         }
 
         headers = {

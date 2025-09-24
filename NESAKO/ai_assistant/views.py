@@ -919,11 +919,11 @@ Odgovori konkretno na: {user_input}"""
                     {'role': 'system', 'content': system_message},
                     {'role': 'user', 'content': user_input}
                 ],
-                'temperature': 0.7,  # Povećana temperatura za prirodnije odgovore
-                'max_tokens': 1500,  # Optimalan broj tokena
-                'top_p': 0.9,
-                'frequency_penalty': 0.2,
-                'presence_penalty': 0.2,
+                'temperature': 0.9,  # Viša temperatura za prirodnije odgovore
+                'max_tokens': 2000,  # Više tokena za bolje odgovore
+                'top_p': 0.95,
+                'frequency_penalty': 0.0,
+                'presence_penalty': 0.0,
                 'stream': False
             }
             
