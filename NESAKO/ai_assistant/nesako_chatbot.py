@@ -72,14 +72,24 @@ class NESAKOChatbot:
     def __init__(self):
         self.memory = NESAKOMemoryORM()
         self.search = NESAKOSearch()
-        # Sistem poruka sa strogim pravilima (naglasak na sportskim pitanjima)
+        # Poboljšani sistem prompt sa fokusom na kvalitetne i korisne odgovore
         self.system_prompt = (
-            "TI SI NESAKO - PREVIŠE JE VAŽNO DA NE LAŽEŠ!\n\n"
-            "PRAVILA:\n"
-            "1. ZA SVA SPORTSKA PITANJA MORAŠ KORISTITI WEB PRETRAGU\n"
-            "2. NIKAD NE IZMIŠLJAJ REZULTATE, DATUME ILI UTAKMICE\n"
-            "3. AKO WEB PRETRAGA NE USPE, RECI 'Trenutno nemam ažurne informacije'\n"
-            "4. NIKAD NE KORISTI PODATKE IZ MODELA ZA SPORTSKA PITANJA\n"
+            "TI SI NESAKO - INTELIGENTNI ASISTENT SA KORISNIM I TAČNIM ODGOVORIMA\n\n"
+            "OSNOVNA PRAVILA:\n"
+            "1. DAJ KORISNE, PRECIZNE I KONTEKSTUALNO RELEVANTNE ODGOVORE\n"
+            "2. BUDI PRIRODAN U KOMUNIKACIJI - KORISTI SRPSKI JEZIK\n"
+            "3. AKO NE ZNAŠ ODGOVOR, ISKRENO RECI I PONUDI ALTERNATIVNU POMOĆ\n"
+            "4. ZA SPORTSKA PITANJA KORISTI WEB PRETRAGU ZA AŽURNE INFORMACIJE\n"
+            "5. IZBEGAVAJ GENERIČKE I NEKORISNE ODGOVORE\n"
+            "6. FOKUSIRAJ SE NA KONKRETNE INFORMACIJE KOJE KORISNIK TRAŽI\n"
+            "7. KORISTI LOGIČKO RAZMIŠLJANJE ZA KOMPLEKSNA PITANJA\n"
+            "8. BUDI KONCIZAN ALI OBUHVATAN U ODGOVORIMA\n\n"
+            "STRATEGIJA ODGOVARANJA:\n"
+            "- Prvo razumi suštinu pitanja\n"
+            "- Odgovori direktno na pitanje\n"
+            "- Daj konkretne primere ako je potrebno\n"
+            "- Objasni složene koncepte jednostavnim jezikom\n"
+            "- Poveži sa prethodnim konverzacijama ako je relevantno\n"
         )
 
         # Ključne reči za detekciju sportskih tema
@@ -473,73 +483,60 @@ class NESAKOChatbot:
         return response
 
     def get_response(self, user_input: str) -> str:
-        # Sportska pitanja obavezno idu kroz web pretragu
-        if any(keyword in user_input.lower() for keyword in self.sports_keywords):
+        # Prvo proveri da li je pitanje sportske prirode
+        is_sports_question = any(keyword in user_input.lower() for keyword in self.sports_keywords)
+        
+        if is_sports_question:
             results = self.search_web(user_input)
             if results:
-                # Add disclaimer to make it clear this is from web search
                 formatted = self.format_search_results(results)
-                return f"🔍 **Informacije sa weba (možda nisu ažurne):**\n\n{formatted}\n\n⚠️ *Molim proverite na zvaničnim izvorima za najtačnije informacije*"
-            return "Trenutno nemam pristup ažurnim informacijama. Molim vas proverite na zvaničnim sportskim sajtovima."
+                return f"🔍 **Sportske informacije sa weba:**\n\n{formatted}"
+            return "Trenutno nemam pristup ažurnim sportskim informacijama. Molim proverite na zvaničnim sportskim sajtovima."
 
-        # Naučeni odgovori (pattern-based)
+        # Proveri naučene odgovore
         learned = self.memory.get_learned_response(user_input)
         if learned:
-            # Add disclaimer for learned responses
-            return f"{learned}\n\nℹ️ *Ovo je naučeni odgovor baziran na prethodnim interakcijama*"
+            return learned
 
-        # Direktna memorija po ključu (ako korisnik kaže "zapamti ...")
+        # Proveri direktnu memoriju
         direct_mem = self.memory.retrieve_memory(user_input)
         if direct_mem:
-            # Add disclaimer for memory-based responses
-            return f"{direct_mem}\n\nℹ️ *Ovo je zapamćena informacija iz prethodnih razgovora*"
+            return direct_mem
 
-        # Generalni odgovor preko DeepSeek (ako je konfigurisan) ili fallback
+        # Generiši odgovor koristeći DeepSeek
         response = self.generate_response(user_input)
         
-        # Add accuracy disclaimer to AI responses
-        if "nisam siguran" not in response.lower() and "nemam" not in response.lower():
-            response += "\n\nℹ️ *Ovo je AI generisan odgovor - molim proverite informacije ako su kritične*"
+        # Dodaj disclaimer samo ako je potrebno
+        if is_sports_question or any(word in user_input.lower() for word in ['tačno', 'sigurno', 'proveri']):
+            response += "\n\nℹ️ *Molim proverite informacije na pouzdanim izvorima*"
         
         return response
 
     def generate_response(self, user_input: str) -> str:
-        # Blokiraj sportska pitanja bez pretrage
-        if any(keyword in user_input.lower() for keyword in self.sports_keywords):
-            return "Za sportske informacije moram koristiti web pretragu. Pokušajte ponovo."
-
-        # Enhanced system prompt with strict anti-hallucination instructions
+        # Poboljšani sistem prompt sa boljom ravnotežom između kreativnosti i tačnosti
         enhanced_system_prompt = self.system_prompt + """
         
-STRICT ANTI-HALLUCINATION PROTOCOL:
-1. NIKAD NE IZMIŠLJAJ INFORMACIJE - koristi samo ono što znaš iz pouzdanih izvora
-2. Ako nisi 100% siguran u odgovor, reci "Nisam siguran" ili "Ne mogu da potvrdim"
-3. Nikad ne daj tačne brojeve, datume ili činjenice bez apsolutne sigurnosti
-4. Za sve trenutne informacije koristi web pretragu
-5. Ako nemaš pristup ažurnim podacima, reci to jasno
-6. Preferiraj oprez i tačnost preko brzine odgovora
-7. Ne pretpostavljaj - traži dodatne informacije ako je potrebno
-8. Koristi samo verifikovane podatke iz sistemskog konteksta
-
-ODGOVORI U SKLADU SA PROTOKOLOM:
-- "Trenutno nemam pristup ažurnim informacijama o tome"
-- "Nisam siguran u tačnost te informacije"
-- "Molim vas proverite na zvaničnim izvorima za najtačnije podatke"
-- "Ne mogu da potvrdim ove informacije bez web pretrage"
-- "Za tačne i ažurne podatke, preporučujem direktnu proveru"
+DODATNA UPUTSTVA ZA KVALITETNE ODGOVORE:
+1. BUDI KORISAN I INFORMATIVAN - fokusiraj se na suštinu pitanja
+2. KORISTI PRIRODAN JEZIK - odgovori kao da razgovaraš sa čovekom
+3. BUDI PRECIZAN - izbegavaj nejasne ili generičke fraze
+4. AKO JE PITANJE KOMPLEKSNO - podeli odgovor na logičke delove
+5. DAJ PRAKTIČNE SAVETE - fokusiraj se na rešenja, ne samo na teoriju
+6. BUDI PROAKTIVAN - predloži sledeće korake ako je relevantno
 """
 
+        # Optimizovani parametri za bolje odgovore
         payload = {
             "model": "deepseek-chat",
             "messages": [
                 {"role": "system", "content": enhanced_system_prompt},
                 {"role": "user", "content": user_input}
             ],
-            "temperature": 0.1,  # Very low temperature to reduce creativity
-            "max_tokens": 300,
-            "top_p": 0.1,  # Very low top_p to focus on most likely responses
-            "frequency_penalty": 0.5,  # Penalize frequent phrases to reduce repetition
-            "presence_penalty": 0.5  # Penalize new concepts to stay on topic
+            "temperature": 0.7,  # Povećana temperatura za kreativnije odgovore
+            "max_tokens": 800,   # Više tokena za detaljnije odgovore
+            "top_p": 0.9,        # Veći top_p za širi izbor reči
+            "frequency_penalty": 0.3,  # Umerena penalizacija za ponavljanje
+            "presence_penalty": 0.3    # Umerena penalizacija za nove koncepte
         }
 
         headers = {

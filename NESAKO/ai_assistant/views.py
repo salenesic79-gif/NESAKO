@@ -900,55 +900,45 @@ class DeepSeekAPI(View):
                 "Content-Type": "application/json"
             }
             
-            # Enhanced system message with transparent GitHub capabilities
-            system_message = f"""Ti si NESAKO AI - ULTIMATIVNI ASISTENT sa pravim GitHub integracijama.
+            # Poboljšani sistem prompt sa fokusom na kvalitetne odgovore
+            system_message = f"""Ti si NESAKO AI - INTELIGENTNI ASISTENT
 
 TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
 
-🎯 REALNE SPOSOBNOSTI:
-• ✅ GitHub integracija - Mogu da analiziram JAVNE repozitorijume
-• ✅ Web pretraga - Koristim Google pretragu za informacije
-• ✅ Analiza koda - Čitanje i analiza programskog koda
-• ✅ Sportske statistike - Osnovne sportske informacije
-• ✅ Izvršavanje koda - Python/JavaScript u sandbox okruženju
+🧠 MOJE SPOSOBNOSTI:
+• Analiza koda i GitHub repozitorijuma
+• Web pretraga za ažurne informacije
+• Pomoć u programiranju i razvoju
+• Odgovori na opšta i specijalizovana pitanja
 
-🚫 OGRANIČENJA:
-• ❌ Ne mogu da pristupim PRIVATNIM repozitorijumima
-• ❌ Ne mogu da menjam kod na GitHub-u (samo read-only)
-• ❌ Za veće repozitorijume prikazujem samo prvih 10-20 fajlova
-• ❌ Fajlovi veći od 50KB se ne prikazuju u potpunosti
+💡 STRATEGIJA ODGOVARANJA:
+1. RAZUMI PITANJE - prvo shvati šta korisnik stvarno pita
+2. BUDI KORISAN - fokusiraj se na praktične informacije
+3. BUDI JASAN - koristi jednostavan i razumljiv jezik
+4. BUDI KONKRETAN - izbegavaj opšte fraze
+5. POVEŽI SA KONTEKSTOM - koristi dostupne alate i informacije
 
-🧠 KONTEKST RAZGOVORA:
-{context_summary}
-
-📊 KORISNIČKI PROFIL (NAUČENO):
-{user_context}
-
-🔧 DETEKTOVANI ALATI U RAZGOVORU:
-{command_output if command_output else '• Nema detektovanih alata'}
+🧩 DOSTUPNI ALATI I INFORMACIJE:
+{command_output if command_output else ''}
 {module_output if module_output else ''}
 {file_output if file_output else ''}
 {tools_output if tools_output else ''}
 {additional_data}
 
-💡 STRATEGIJA:
-1. Budi iskren o svojim mogućnostima i ograničenjima
-2. Ako nešto ne možeš da uradiš, reci to jasno
-3. Koristi GitHub API samo za javne repozitorijume
-4. Prikazuj samo relevantne informacije
-5. Uvek daj tačne i proverljive odgovore
+🎯 CILJ: Pružiti kvalitetne, korisne i tačne odgovore koji stvarno pomažu korisniku."""
 
-🎯 CILJ: Pružam realne, proverljive informacije bez obećavanja nemogućeg."""
-
-            # API call to DeepSeek with enhanced error handling
+            # Optimizovani API poziv za bolje odgovore
             payload = {
                 'model': 'deepseek-chat',
                 'messages': [
                     {'role': 'system', 'content': system_message},
                     {'role': 'user', 'content': user_input}
                 ],
-                'temperature': 0.3,
-                'max_tokens': 4000,
+                'temperature': 0.7,  # Povećana temperatura za prirodnije odgovore
+                'max_tokens': 1500,  # Optimalan broj tokena
+                'top_p': 0.9,
+                'frequency_penalty': 0.2,
+                'presence_penalty': 0.2,
                 'stream': False
             }
             
