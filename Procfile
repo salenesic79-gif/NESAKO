@@ -1,1 +1,1 @@
-web: python start.py
+web: gunicorn NESAKO.wsgi --log-file -
