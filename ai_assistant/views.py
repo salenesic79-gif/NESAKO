@@ -111,6 +111,61 @@ class DeepSeekAPI(View):
             return any(p in text for p in patterns)
         except Exception:
             return False
+    
+    def check_rate_limit(self, session_id, max_requests: int = 5, time_window: int = 60) -> bool:
+        """Simple in-memory rate limiter to avoid server errors.
+        Returns True when within limits, False if exceeded.
+        """
+        try:
+            import time
+            now = time.time()
+            if not session_id:
+                return True
+            if not hasattr(self, '_rate_limit_data'):
+                self._rate_limit_data = {}
+            data = self._rate_limit_data.get(session_id)
+            if not data or (now - data.get('timestamp', 0) > time_window):
+                self._rate_limit_data[session_id] = {'count': 1, 'timestamp': now}
+                return True
+            if data['count'] >= max_requests:
+                return False
+            data['count'] += 1
+            data['timestamp'] = now
+            self._rate_limit_data[session_id] = data
+            return True
+        except Exception:
+            # On any error, do not block user
+            return True
+    
+    def reformulate_search_query(self, original_query: str, conversation_history: list) -> str:
+        """Safely reformulate the search query using recent user messages as context.
+        Minimal implementation to avoid runtime errors; returns a trimmed query with context hints.
+        """
+        try:
+            query = (original_query or '').strip()
+            context = ''
+            # Use last few user messages to add context
+            if isinstance(conversation_history, list):
+                recent_messages = []
+                for msg in reversed(conversation_history[-6:]):
+                    try:
+                        if msg.get('isUser') and msg.get('content') and msg.get('content') != original_query:
+                            recent_messages.append(msg['content'])
+                    except Exception:
+                        continue
+                if recent_messages:
+                    # Append as parentheses to keep search concise
+                    context = ' (' + ' '.join(recent_messages[:2]) + ')'
+            # Remove very common filler words
+            filler_words = {'molim', 'te', 'da', 'mi', 'kažeš', 'pomozi', 'sa', 'o'}
+            words = [w for w in query.split() if w.lower() not in filler_words and len(w) > 2]
+            reformulated = ' '.join(words) + context
+            # Limit length
+            if len(reformulated) > 100:
+                reformulated = reformulated[:97] + '...'
+            return reformulated or (original_query or '')
+        except Exception:
+            return original_query or ''
         
     def dispatch(self, request, *args, **kwargs):
         # Check authentication for API access
@@ -293,6 +348,83 @@ class DeepSeekAPI(View):
         except Exception as e:
             return f"Error: {str(e)}"
         return "Content not accessible"
+
+    def synthesize_answer_from_web(self, query: str, max_sources: int = 2) -> str:
+        """Brza sinteza odgovora iz web izvora kada AI API nije dostupan.
+        Vrati kratak sažetak + bullet points + izvore."""
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            ddg_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(query)}"
+            r = requests.get(ddg_url, headers=headers, timeout=8)
+            results = []
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                items = soup.select('div.result')[:max_sources]
+                for item in items:
+                    a = item.select_one('a.result__a')
+                    title = a.get_text(strip=True) if a else ''
+                    url = a.get('href') if a and a.has_attr('href') else ''
+                    # Normalizuj DDG redirect → direktan URL
+                    if url:
+                        if url.startswith('//'):
+                            url = 'https:' + url
+                        if 'duckduckgo.com/l/?' in url:
+                            parsed = urllib.parse.urlparse(url)
+                            qs = urllib.parse.parse_qs(parsed.query)
+                            uddg = qs.get('uddg', [None])[0]
+                            if uddg:
+                                url = urllib.parse.unquote(uddg)
+                    # Filtriraj niskokvalitetne domene (lyrics/forumi/prevodi)
+                    try:
+                        host = urllib.parse.urlparse(url).netloc.lower()
+                    except Exception:
+                        host = ''
+                    blacklist = [
+                        'genius.com', 'songsear.ch', 'tekstovi.net', 'azlyrics.com',
+                        'glosbe.com', 'wordreference.com', 'reddit.com', 'quora.com', 'forum'
+                    ]
+                    if any(b in host for b in blacklist):
+                        continue
+                    if title or url:
+                        results.append({'title': title, 'url': url})
+
+            if not results:
+                return "Nisam pronašao dovoljno podataka na webu za jasan odgovor."
+
+            key_points = []
+            sources = []
+            for res in results:
+                url = (res.get('url') or '').strip()
+                title = (res.get('title') or '').strip()
+                if not url:
+                    continue
+                text = self.get_web_content(url) or ""
+                # Gruba ekstrakcija 2-3 informativne rečenice
+                sentences = [s.strip() for s in re.split(r'[.!?]\s+', text) if s and len(s) > 40]
+                terms = [t.lower() for t in re.findall(r'\w+', query) if len(t) > 3]
+                scored = []
+                for s in sentences[:60]:
+                    score = sum(1 for t in terms if t in s.lower())
+                    scored.append((score, len(s), s))
+                scored.sort(key=lambda x: (-x[0], x[1]))
+                for _, __, s in scored[:2]:
+                    key_points.append(f"- {s}")
+                sources.append((title or url, url))
+                if len(key_points) >= 5:
+                    break
+
+            if not key_points:
+                return "Pronašao sam izvore, ali nisu dali dovoljno jasnih informacija za sažetak."
+
+            summary = f"Sažetak za: “{query}”\n\n"
+            summary += "\n".join(key_points[:6])
+            summary += "\n\nIzvori:\n"
+            for i, (t, u) in enumerate(sources, 1):
+                summary += f"{i}. {t} — {u}\n"
+
+            return summary.strip()
+        except Exception as e:
+            return f"Nisam uspeo da sintetizujem odgovor sa weba. Greška: {str(e)}"
 
     def get_sports_stats(self, sport, event_id, data_points):
         """Tool: Preuzimanje sportskih statistika"""
@@ -478,21 +610,57 @@ class DeepSeekAPI(View):
     # --- Novi: Provera pouzdanosti odgovora i fallback na web ---
     def is_confident_answer(self, response_text: str, min_confidence: float = 0.7) -> bool:
         """Heuristika za procenu pouzdanosti odgovora.
-        Ako model ne vraća score, koristimo jednostavne provere: dužina, negacije, indikatori nesigurnosti.
+        Ako model ne vraća score, koristimo proširene provere: dužina, nesigurni markeri,
+        generičke fraze i broj informativnih rečenica.
         """
         if not response_text:
             return False
-        text = response_text.lower()
+        text = response_text.strip()
+        lower = text.lower()
+        # Nesigurni markeri
         uncertain_markers = [
             'nisam siguran', 'ne mogu da proverim', 'možda', 'verovatno',
-            'nemam dovoljno informacija', 'ne mogu da pristupim', 'nepoznato'
+            'nemam dovoljno informacija', 'ne mogu da pristupim', 'nepoznato',
+            'proverite informacije', 'možda nisu ažurne', 'molim proverite',
+            'automatska web pretraga', 'informacije sa weba', 'izvor: google'
         ]
-        if any(m in text for m in uncertain_markers):
+        if any(m in lower for m in uncertain_markers):
             return False
-        if 'sigurno' in text:
-            return True
-        # Minimalna dužina kao prag
-        return len(text.strip()) > 40
+        # Generičke fraze koje ne doprinose suštini
+        generic_fillers = [
+            'evo kako mogu da pomognem', 'u nastavku su informacije',
+            'sledite korake', 'u principu', 'generalno', 'ukratko'
+        ]
+        if any(g in lower for g in generic_fillers) and len(text) < 200:
+            return False
+        # Zaista kratak odgovor je nepouzdan (strožije)
+        if len(text) < 90:
+            return False
+        # Zahtevaj minimalno 2 informativne rečenice ili 2 bullet tačke
+        sentences = [s for s in re.split(r'[.!?]\s+', text) if len(s.strip()) > 25]
+        bullets = [ln for ln in text.splitlines() if ln.strip().startswith(('-', '•', '*')) and len(ln.strip()) > 15]
+        if len(sentences) + len(bullets) < 2:
+            return False
+        return True
+
+    def is_smalltalk(self, text: str) -> bool:
+        """Detektuj small‑talk/banter gde web sinteza nema smisla."""
+        try:
+            if not text:
+                return False
+            t = text.strip().lower()
+            patterns = [
+                r"\b(kako si|sta radis|šta radiš|sta ima|šta ima|jel si tu|jesi tu|hej|cao|ćao|zdravo|hello|hi)\b",
+                r"\b(spreman za akciju|jesi spreman|ajmo|mozes li|možes li)\b",
+                r"\b(drago mi je|super|odlično|ok|okej)\b"
+            ]
+            return any(re.search(p, t) for p in patterns)
+        except Exception:
+            return False
+
+    def friendly_smalltalk_reply(self, user_text: str) -> str:
+        base = "Ćao! Tu sam i spreman da pomognem. Reci kako mogu da ti pomognem? 😊"
+        return base
 
     def apply_confidence_fallback(self, user_input: str, ai_response: str) -> str:
         """Ako odgovor nije dovoljno pouzdan, ili je eksplicitno traženo 'trenutno/realno/najnovije',
@@ -688,6 +856,16 @@ class DeepSeekAPI(View):
             if not session_id:
                 request.session.create()
                 session_id = request.session.session_key
+
+            # Auto-create/load AI modules if enabled (default True when not set)
+            try:
+                if request.session.get('auto_modules_enabled') is None:
+                    request.session['auto_modules_enabled'] = True
+                if bool(request.session.get('auto_modules_enabled', True)) and not self.module_manager.active_modules:
+                    creation_result = self.module_manager.create_and_load_default_modules()
+                    print(f"Auto modules loaded: {creation_result}")
+            except Exception as e:
+                print(f"Module auto-load error: {e}")
             
             # Load conversation history from persistent memory
             persistent_history = self.memory.get_conversation_history(session_id, limit=20)
@@ -997,9 +1175,16 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
                         }, status=500)
                     
                     ai_response = result['choices'][0]['message']['content']
-                    # Provera pouzdanosti i automatski web fallback po potrebi
-                    ai_response = self.apply_confidence_fallback(user_input, ai_response)
-                    
+                    # Ako odgovor nije dovoljno pouzdan, probaj web sintezu (osim small‑talk)
+                    used_web = False
+                    if not self.is_confident_answer(ai_response):
+                        if not self.is_smalltalk(user_input):
+                            synth = self.synthesize_answer_from_web(user_input)
+                            if synth and 'nisam' not in synth.lower():
+                                ai_response = synth
+                                used_web = True
+                        else:
+                            ai_response = self.friendly_smalltalk_reply(user_input)
                     # Validate AI response content
                     if not ai_response or ai_response.strip() == '':
                         print("ERROR: Empty AI response")
@@ -1060,55 +1245,89 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
                         'context_aware': bool(context_summary),
                         'response_length': len(ai_response),
                         'conversation_id': conversation_id,
-                        'memory_active': True
+                        'memory_active': True,
+                        'used_web_synthesis': used_web
                     })
                 else:
-                    # Fallback to NESAKO chatbot when API fails
-                    print("DeepSeek API failed, falling back to NESAKO chatbot")
-                    ai_response = self.nesako.get_response(user_input)
-                    
+                    # Fallback: pokušaj web sintezu pre NESAKO (osim small‑talk)
+                    print("DeepSeek API failed, using web synthesis fallback")
+                    used_web = False
+                    if not self.is_smalltalk(user_input):
+                        ai_response = self.synthesize_answer_from_web(user_input)
+                        used_web = True
+                    else:
+                        ai_response = self.friendly_smalltalk_reply(user_input)
+                    if not ai_response or 'nisam' in ai_response.lower():
+                        ai_response = self.nesako.get_response(user_input)
+                        used_web = False
                     # Add context from tools and additional data
                     if additional_data:
                         ai_response = f"{additional_data}\n\n{ai_response}"
                     if tools_output:
                         ai_response = f"{tools_output}\n\n{ai_response}"
-                    
                     return JsonResponse({
                         'response': ai_response,
                         'status': 'success',
                         'timestamp': current_time.isoformat(),
-                        'mode': 'nesako_fallback',
+                        'mode': 'web_synthesis' if used_web else 'nesako_fallback',
                         'tools_used': bool(tools_output),
                         'context_aware': bool(context_summary),
                         'response_length': len(ai_response),
-                        'note': 'NESAKO fallback used due to API error'
+                        'note': 'Fallback used due to API error',
+                        'used_web_synthesis': used_web
                     })
                     
             except requests.exceptions.Timeout:
-                print("ERROR: API request timeout - using NESAKO fallback")
-                ai_response = self.nesako.get_response(user_input)
+                print("ERROR: API request timeout - using web synthesis fallback")
+                if not self.is_smalltalk(user_input):
+                    ai_response = self.synthesize_answer_from_web(user_input)
+                    used_web = True
+                else:
+                    ai_response = self.friendly_smalltalk_reply(user_input)
+                    used_web = False
+                if not ai_response or 'nisam' in ai_response.lower():
+                    ai_response = self.nesako.get_response(user_input)
+                    used_web = False
                 return JsonResponse({
                     'response': ai_response,
                     'status': 'success',
                     'timestamp': current_time.isoformat(),
-                    'mode': 'nesako_fallback_timeout',
-                    'note': 'NESAKO fallback used due to API timeout'
+                    'mode': 'web_synthesis_timeout' if used_web else 'nesako_fallback_timeout',
+                    'note': 'Fallback used due to API timeout',
+                    'used_web_synthesis': used_web
                 })
                 
             except requests.exceptions.ConnectionError:
-                print("ERROR: API connection error - using NESAKO fallback")
-                ai_response = self.nesako.get_response(user_input)
+                print("ERROR: API connection error - using web synthesis fallback")
+                if not self.is_smalltalk(user_input):
+                    ai_response = self.synthesize_answer_from_web(user_input)
+                    used_web = True
+                else:
+                    ai_response = self.friendly_smalltalk_reply(user_input)
+                    used_web = False
+                if not ai_response or 'nisam' in ai_response.lower():
+                    ai_response = self.nesako.get_response(user_input)
+                    used_web = False
                 return JsonResponse({
                     'response': ai_response,
                     'status': 'success',
                     'timestamp': current_time.isoformat(),
-                    'mode': 'nesako_fallback_connection',
-                    'note': 'NESAKO fallback used due to connection error'
+                    'mode': 'web_synthesis_connection' if used_web else 'nesako_fallback_connection',
+                    'note': 'Fallback used due to connection error',
+                    'used_web_synthesis': used_web
                 })
                 
             except Exception as api_error:
-                print(f"ERROR: Unexpected API error: {api_error} - using NESAKO fallback")
-                ai_response = self.nesako.get_response(user_input)
+                print(f"ERROR: Unexpected API error: {api_error} - using web synthesis fallback")
+                if not self.is_smalltalk(user_input):
+                    ai_response = self.synthesize_answer_from_web(user_input)
+                    used_web = True
+                else:
+                    ai_response = self.friendly_smalltalk_reply(user_input)
+                    used_web = False
+                if not ai_response or 'nisam' in ai_response.lower():
+                    ai_response = self.nesako.get_response(user_input)
+                    used_web = False
                 # Add context from tools and additional data for consistency
                 if additional_data:
                     ai_response = f"{additional_data}\n\n{ai_response}"
@@ -1118,10 +1337,11 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
                     'response': ai_response,
                     'status': 'success',
                     'timestamp': current_time.isoformat(),
-                    'mode': 'nesako_fallback_error',
+                    'mode': 'web_synthesis_error' if used_web else 'nesako_fallback_error',
                     'tools_used': bool(tools_output),
                     'context_aware': bool(context_summary),
-                    'note': f'NESAKO fallback used due to API error: {str(api_error)}'
+                    'note': f'Fallback used due to API error: {str(api_error)}',
+                    'used_web_synthesis': used_web
                 })
                 
         except json.JSONDecodeError as e:
@@ -1135,6 +1355,39 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
 from django.views.decorators.http import require_http_methods
 from django.http import FileResponse
 from django.contrib.staticfiles import finders
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def preferences_view(request):
+    """Get/Set session preferences like auto_modules_enabled.
+    - GET returns {auto_modules_enabled: bool}
+    - POST accepts JSON or form with auto_modules_enabled=true/false
+    """
+    try:
+        if request.method == 'GET':
+            return JsonResponse({
+                'auto_modules_enabled': bool(request.session.get('auto_modules_enabled', False))
+            })
+
+        # POST
+        enabled = None
+        if request.content_type and 'application/json' in request.content_type:
+            try:
+                data = json.loads(request.body or '{}')
+                enabled = data.get('auto_modules_enabled', None)
+            except Exception:
+                enabled = None
+        if enabled is None:
+            # Try form data
+            val = request.POST.get('auto_modules_enabled')
+            if val is not None:
+                enabled = (str(val).lower() in ['1', 'true', 'yes', 'on'])
+        if enabled is None:
+            return JsonResponse({'error': 'Missing auto_modules_enabled'}, status=400)
+        request.session['auto_modules_enabled'] = bool(enabled)
+        return JsonResponse({'ok': True, 'auto_modules_enabled': bool(enabled)})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 @require_http_methods(["GET"])
 def lessons_view(request):
@@ -1198,50 +1451,82 @@ def manifest_view(request):
 
 @require_http_methods(["GET"])
 def health_view(request):
-    """Health endpoint: proverava statiku (manifest.json), env varijable i DB dostupnost."""
-    import os
-    from django.conf import settings as dj_settings
-    from django.contrib.staticfiles import finders
-    from .models import Conversation
-
-    # Provera manifest.json preko staticfiles findera i preko STATIC_ROOT
-    manifest_found = False
-    manifest_path = None
+    """Health endpoint: proverava statiku (manifest.json), env varijable i DB dostupnost.
+    Nikada ne baca 500 – u slučaju greške vraća JSON sa status='error'.
+    """
     try:
-        manifest_path = finders.find('manifest.json')
-        if not manifest_path:
-            # fallback na filesystem
-            candidate = (dj_settings.STATIC_ROOT / 'manifest.json') if isinstance(dj_settings.STATIC_ROOT, Path) else os.path.join(dj_settings.STATIC_ROOT, 'manifest.json')
-            if os.path.exists(candidate):
-                manifest_path = str(candidate)
-        manifest_found = bool(manifest_path)
-    except Exception:
+        import os
+        from django.conf import settings as dj_settings
+        from django.contrib.staticfiles import finders
+        from .models import Conversation
+
+        # Provera manifest.json preko staticfiles findera i preko STATIC_ROOT
         manifest_found = False
+        manifest_path = None
+        try:
+            manifest_path = finders.find('manifest.json')
+            if not manifest_path:
+                # fallback na filesystem
+                candidate = (dj_settings.STATIC_ROOT / 'manifest.json') if isinstance(dj_settings.STATIC_ROOT, Path) else os.path.join(dj_settings.STATIC_ROOT, 'manifest.json')
+                if os.path.exists(candidate):
+                    manifest_path = str(candidate)
+            manifest_found = bool(manifest_path)
+        except Exception:
+            manifest_found = False
 
-    # Provera env varijabli
-    env_info = {
-        'DEEPSEEK_API_KEY': bool(dj_settings.DEEPSEEK_API_KEY),
-        'SERPAPI_API_KEY': bool(os.getenv('SERPAPI_API_KEY')),
-        'DEBUG': bool(dj_settings.DEBUG),
-    }
+        # Provera env varijabli
+        env_info = {
+            'DEEPSEEK_API_KEY': bool(dj_settings.DEEPSEEK_API_KEY),
+            'SERPAPI_API_KEY': bool(os.getenv('SERPAPI_API_KEY')),
+            'DEBUG': bool(dj_settings.DEBUG),
+        }
 
-    # Provera DB konekcije
-    db_ok = True
-    db_error = None
-    try:
-        _ = Conversation.objects.count()
+        # Provera DB konekcije
+        db_ok = True
+        db_error = None
+        try:
+            _ = Conversation.objects.count()
+        except Exception as e:
+            db_ok = False
+            db_error = str(e)
+
+        # Provera AI konekcije (bez otkrivanja ključa)
+        ai_ok = False
+        ai_status_code = None
+        ai_error = None
+        try:
+            api_key = os.getenv('DEEPSEEK_API_KEY', '')
+            api_url = os.getenv('DEEPSEEK_API_URL', 'https://api.deepseek.com/v1/chat/completions')
+            model_name = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat') or 'deepseek-chat'
+            if api_key:
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json"}
+                payload = {"model": model_name, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}
+                import requests
+                r = requests.post(api_url, headers=headers, json=payload, timeout=5)
+                if r.status_code == 401:
+                    # Retry with alternate header schema
+                    alt_headers = {"X-API-Key": api_key, "Content-Type": "application/json", "Accept": "application/json"}
+                    r = requests.post(api_url, headers=alt_headers, json=payload, timeout=5)
+                ai_status_code = r.status_code
+                ai_ok = r.ok
+            else:
+                ai_error = 'no_api_key'
+        except Exception as e:
+            ai_error = str(e)
+
+        return JsonResponse({
+            'status': 'ok' if (manifest_found and db_ok) else 'degraded',
+            'static_manifest_found': manifest_found,
+            'static_manifest_path': manifest_path,
+            'env': env_info,
+            'db_ok': db_ok,
+            'db_error': db_error,
+            'ai_ok': ai_ok,
+            'ai_status_code': ai_status_code,
+            'ai_error': ai_error,
+        })
     except Exception as e:
-        db_ok = False
-        db_error = str(e)
-
-    return JsonResponse({
-        'status': 'ok' if (manifest_found and db_ok) else 'degraded',
-        'static_manifest_found': manifest_found,
-        'static_manifest_path': manifest_path,
-        'env': env_info,
-        'db_ok': db_ok,
-        'db_error': db_error,
-    })
+        return JsonResponse({'status': 'error', 'error': str(e)}, status=200)
 
 @csrf_exempt
 @require_http_methods(["GET"])
@@ -1251,24 +1536,87 @@ def web_check(request):
     if not q:
         return JsonResponse({"error": "Missing q"}, status=400)
     try:
-        # Use the NESAKO search functionality which uses SerpAPI
-        search_results = NESAKOChatbot().search_web(q)
-        
-        if not search_results:
+        results = []
+        formatted_content = ""
+
+        # 1) Try NESAKO SerpAPI (snippets only)
+        try:
+            serp_snippets = NESAKOChatbot().search_web(q) or []
+        except Exception:
+            serp_snippets = []
+
+        # 2) DuckDuckGo HTML fallback for titles+urls+snippets (no API key required)
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            ddg_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(q)}"
+            r = requests.get(ddg_url, headers=headers, timeout=8)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                items = soup.select('div.result')[:5]
+                for item in items:
+                    title_el = item.select_one('a.result__a')
+                    url_el = title_el
+                    snippet_el = item.select_one('div.result__snippet')
+                    title = title_el.get_text(strip=True) if title_el else ''
+                    url = url_el.get('href') if url_el and url_el.has_attr('href') else ''
+                    # Normalize DuckDuckGo redirect URLs to direct target with https
+                    try:
+                        if isinstance(url, str) and url:
+                            if url.startswith('//'):
+                                url = 'https:' + url
+                            if 'duckduckgo.com/l/?' in url:
+                                parsed = urllib.parse.urlparse(url)
+                                qs = urllib.parse.parse_qs(parsed.query)
+                                uddg = qs.get('uddg', [None])[0]
+                                if uddg:
+                                    url = urllib.parse.unquote(uddg)
+                    except Exception:
+                        pass
+                    snippet = snippet_el.get_text(" ", strip=True) if snippet_el else ''
+                    if title or url or snippet:
+                        results.append({
+                            'title': title,
+                            'url': url,
+                            'snippet': snippet
+                        })
+        except Exception:
+            pass
+
+        # If no DDG results, but have SerpAPI snippets, map them to minimal results
+        if not results and serp_snippets:
+            for s in serp_snippets[:5]:
+                results.append({'title': '', 'url': '', 'snippet': s})
+
+        if not results:
             return JsonResponse({
-                "query": q, 
-                "content": "Nisam pronašao relevantne rezultate za ovaj upit. Molim pokušajte drugačiju formulaciju pretrage.",
-                "error": "No relevant content found"
+                "query": q,
+                "content": "Nema rezultata pretrage.",
+                "formatted": True,
+                "results": [],
+                "results_count": 0
             })
-        
-        # Format the results
-        formatted_content = "\n".join([f"{i+1}. {result}" for i, result in enumerate(search_results[:5])])
-        
+
+        # Build formatted string with numbered items
+        lines = []
+        for i, r in enumerate(results, 1):
+            line = f"{i}. "
+            if r.get('title'):
+                line += r['title']
+            if r.get('url'):
+                line += f"\n   {r['url']}"
+            if r.get('snippet'):
+                line += f"\n   \u201c{r['snippet']}\u201d"
+            lines.append(line)
+        formatted_content = "\n".join(lines)
+
         return JsonResponse({
-            "query": q, 
+            "query": q,
             "content": formatted_content,
             "formatted": True,
-            "results_count": len(search_results)
+            "results": results,
+            "results_count": len(results)
         })
     except Exception as e:
         return JsonResponse({
@@ -2283,3 +2631,36 @@ class ProtectedTemplateView(TemplateView):
         if not request.session.get('authenticated'):
             return redirect('/login/')
         return super().dispatch(request, *args, **kwargs)
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def preferences_view(request):
+    """Get/Set session preferences like auto_modules_enabled.
+    - GET returns {auto_modules_enabled: bool}
+    - POST accepts JSON or form with auto_modules_enabled=true/false
+    """
+    try:
+        if request.method == 'GET':
+            return JsonResponse({
+                'auto_modules_enabled': bool(request.session.get('auto_modules_enabled', False))
+            })
+        
+        # POST
+        enabled = None
+        if request.content_type and 'application/json' in request.content_type:
+            try:
+                data = json.loads(request.body or '{}')
+                enabled = data.get('auto_modules_enabled', None)
+            except Exception:
+                enabled = None
+        if enabled is None:
+            # Try form data
+            val = request.POST.get('auto_modules_enabled')
+            if val is not None:
+                enabled = (str(val).lower() in ['1', 'true', 'yes', 'on'])
+        if enabled is None:
+            return JsonResponse({'error': 'Missing auto_modules_enabled'}, status=400)
+        request.session['auto_modules_enabled'] = bool(enabled)
+        return JsonResponse({'ok': True, 'auto_modules_enabled': bool(enabled)})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
