@@ -210,7 +210,8 @@ class DeepSeekAPI(View):
                     error_data = repo_response.json()
                     error_info = f" - {error_data.get('message', '')}"
                 except:
-                    pass
+                    error_info += f" - {repo_response.text[:200]}"
+            
                 return f"❌ GitHub repozitorijum nije pronađen ili nije javan: {owner}/{repo}{error_info}"
             
             repo_data = repo_response.json()
@@ -1397,7 +1398,10 @@ def fudbal_quick_odds(request):
     """Return quick odds for matches in next 82 hours from fudbal91.com/quick_odds"""
     try:
         from . import fudbal91
-        data = fudbal91.fetch_quick_odds()
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        hours_val = None if (all_flag and all_flag in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else fudbal91.WINDOW_HOURS)
+        data = fudbal91.fetch_quick_odds(hours=hours_val)
         return JsonResponse(data)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -1409,7 +1413,10 @@ def fudbal_odds_changes(request):
     """Return odds changes within next 82 hours from fudbal91.com/odds_changes"""
     try:
         from . import fudbal91
-        data = fudbal91.fetch_odds_changes()
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        hours_val = None if (all_flag and all_flag in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else fudbal91.WINDOW_HOURS)
+        data = fudbal91.fetch_odds_changes(hours=hours_val)
         return JsonResponse(data)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -1428,7 +1435,10 @@ def fudbal_competition(request):
         key = request.GET.get('key', '')
         url = request.GET.get('url', '')
         target = url or key or 'ucl'
-        data = fudbal91.fetch_competition(target)
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        hours_val = None if (all_flag and all_flag in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else fudbal91.WINDOW_HOURS)
+        data = fudbal91.fetch_competition(target, hours=hours_val)
         return JsonResponse(data)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -2409,7 +2419,7 @@ Da li želite da nastavite? (potrebna je eksplicitna potvrda)"""
         query = original_query.lower()
         
         # Remove common filler words
-        filler_words = ['molim', 'te', 'da', 'mi', 'kažeš', 'pomozi', 'sa', 'o']
+        filler_words = {'molim', 'te', 'da', 'mi', 'kažeš', 'pomozi', 'sa', 'o'}
         words = query.split()
         filtered_words = [word for word in words if word not in filler_words and len(word) > 2]
         
@@ -2496,7 +2506,7 @@ Molim analiziraj ove slike i daj detaljnu analizu sa preporukama za poboljšanje
             # Get session ID for memory
             session_id = request.session.session_key
             if not session_id:
-                request.session.create()
+                request.session.save()
                 session_id = request.session.session_key
             
             # Save to memory

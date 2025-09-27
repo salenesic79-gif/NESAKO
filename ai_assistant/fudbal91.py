@@ -40,9 +40,11 @@ def _parse_kickoff(text: str) -> Optional[datetime]:
     return None
 
 
-def _within_window(dt: Optional[datetime], hours: int = WINDOW_HOURS) -> bool:
+def _within_window(dt: Optional[datetime], hours: Optional[int] = WINDOW_HOURS) -> bool:
     if not dt:
         return False
+    if hours is None:
+        return True
     now = datetime.now(timezone.utc)
     return now <= dt <= now + timedelta(hours=hours)
 
@@ -57,7 +59,7 @@ def _get_soup(url: str) -> Optional[BeautifulSoup]:
         return None
 
 
-def fetch_quick_odds() -> Dict:
+def fetch_quick_odds(hours: Optional[int] = WINDOW_HOURS) -> Dict:
     url = "https://www.fudbal91.com/quick_odds"
     soup = _get_soup(url)
     items: List[Dict] = []
@@ -65,16 +67,37 @@ def fetch_quick_odds() -> Dict:
         return {"source": url, "items": items}
 
     # Heuristic selectors
-    rows = soup.select("table tr, .match, .row")
+    rows = soup.select(
+        "table tr, .match, .row, .match-row, .fixture-row, .event-row, .game, .fixture"
+    )
     for row in rows:
         try:
-            league = (row.select_one(".league") or row.select_one(".comp") or row.select_one(".competition"))
+            league = (row.select_one(".league") or row.select_one(".comp") or row.select_one(".competition")
+                      or row.find(attrs={"data-league": True}))
             league_name = league.get_text(strip=True) if league else ""
-            teams_text = " ".join(el.get_text(" ", strip=True) for el in row.select(".teams, .home, .away, .match-name"))
-            if not teams_text:
-                teams_text = row.get_text(" ", strip=True)[:200]
+            # Teams
+            home = row.select_one('.home, .team-home, .home-team, .team1')
+            away = row.select_one('.away, .team-away, .away-team, .team2')
+            if home and away:
+                teams_text = f"{home.get_text(strip=True)} - {away.get_text(strip=True)}"
+            else:
+                teams_text = " ".join(el.get_text(" ", strip=True) for el in row.select(".teams, .match-name, .teams-wrap"))
+                if not teams_text:
+                    # Fallback regex from full row text
+                    txt = row.get_text(" ", strip=True)
+                    m = re.search(r"([\w .'-]+)\s*[-–]\s*([\w .'-]+)", txt)
+                    teams_text = f"{m.group(1)} - {m.group(2)}" if m else txt[:200]
             time_el = row.select_one("time, .kickoff, .ko, .date, .time")
-            ko_text = time_el.get("datetime", "") if time_el and time_el.has_attr("datetime") else (time_el.get_text(strip=True) if time_el else "")
+            if time_el and time_el.has_attr('datetime'):
+                ko_text = time_el.get('datetime', '')
+            else:
+                ko_text = (time_el.get_text(strip=True) if time_el else "")
+                if not ko_text:
+                    # Try data attributes on row
+                    for attr in ['data-kickoff', 'data-time', 'data-date']:
+                        if row.has_attr(attr):
+                            ko_text = row.get(attr) or ''
+                            break
             kickoff = _parse_kickoff(ko_text) or _parse_kickoff(row.get_text(" ", strip=True))
 
             # Odds
@@ -90,7 +113,7 @@ def fetch_quick_odds() -> Dict:
                         val = el.get_text(strip=True)
                     odds[lab] = val
 
-            if _within_window(kickoff):
+            if _within_window(kickoff, hours=hours):
                 items.append({
                     "league": league_name,
                     "match": teams_text,
@@ -102,19 +125,19 @@ def fetch_quick_odds() -> Dict:
     return {"source": url, "items": items}
 
 
-def fetch_odds_changes() -> Dict:
+def fetch_odds_changes(hours: Optional[int] = WINDOW_HOURS) -> Dict:
     url = "https://www.fudbal91.com/odds_changes"
     soup = _get_soup(url)
     items: List[Dict] = []
     if not soup:
         return {"source": url, "items": items}
 
-    blocks = soup.select(".change, .odds-change, table tr")
+    blocks = soup.select(".change, .odds-change, table tr, .row, .event-row")
     for b in blocks:
         try:
             txt = b.get_text(" ", strip=True)
             kickoff = _parse_kickoff(txt)
-            if not _within_window(kickoff):
+            if not _within_window(kickoff, hours=hours):
                 continue
             match = txt[:140]
             # Extract any number-like odds changes
@@ -142,7 +165,7 @@ COMPETITION_MAP = {
 }
 
 
-def fetch_competition(url_or_key: str) -> Dict:
+def fetch_competition(url_or_key: str, hours: Optional[int] = WINDOW_HOURS) -> Dict:
     url = COMPETITION_MAP.get(url_or_key.lower(), url_or_key)
     soup = _get_soup(url)
     items: List[Dict] = []
@@ -150,16 +173,34 @@ def fetch_competition(url_or_key: str) -> Dict:
         return {"source": url, "items": items}
 
     # Try to find match rows
-    rows = soup.select("table tr, .match, .fixture, .game")
+    rows = soup.select(
+        "table tr, .match, .fixture, .game, .match-row, .fixture-row, .event-row, .row"
+    )
     for row in rows:
         try:
-            league_el = soup.select_one("h1, .competition-title, .title")
+            league_el = soup.select_one("h1, .competition-title, .title, header h1, .page-title")
             league_name = league_el.get_text(strip=True) if league_el else ""
-            teams = " ".join(e.get_text(" ", strip=True) for e in row.select(".teams, .home, .away, .match-name"))
-            if not teams:
-                teams = row.get_text(" ", strip=True)[:200]
+            # Teams extraction
+            home = row.select_one('.home, .team-home, .home-team, .team1')
+            away = row.select_one('.away, .team-away, .away-team, .team2')
+            if home and away:
+                teams = f"{home.get_text(strip=True)} - {away.get_text(strip=True)}"
+            else:
+                teams = " ".join(e.get_text(" ", strip=True) for e in row.select(".teams, .match-name, .teams-wrap"))
+                if not teams:
+                    txt = row.get_text(" ", strip=True)
+                    m = re.search(r"([\w .'-]+)\s*[-–]\s*([\w .'-]+)", txt)
+                    teams = f"{m.group(1)} - {m.group(2)}" if m else txt[:200]
             time_el = row.select_one("time, .kickoff, .ko, .date, .time")
-            ko_text = time_el.get("datetime", "") if time_el and time_el.has_attr("datetime") else (time_el.get_text(strip=True) if time_el else "")
+            if time_el and time_el.has_attr('datetime'):
+                ko_text = time_el.get('datetime', '')
+            else:
+                ko_text = (time_el.get_text(strip=True) if time_el else "")
+                if not ko_text:
+                    for attr in ['data-kickoff', 'data-time', 'data-date']:
+                        if row.has_attr(attr):
+                            ko_text = row.get(attr) or ''
+                            break
             kickoff = _parse_kickoff(ko_text) or _parse_kickoff(row.get_text(" ", strip=True))
 
             odds = {}
@@ -170,7 +211,7 @@ def fetch_competition(url_or_key: str) -> Dict:
                 if floats:
                     odds["list"] = floats[:10]
 
-            if _within_window(kickoff):
+            if _within_window(kickoff, hours=hours):
                 items.append({
                     "league": league_name,
                     "match": teams,
