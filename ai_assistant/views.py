@@ -1389,6 +1389,50 @@ def preferences_view(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+
+# --- Fudbal91 integrations (read-only JSON endpoints) ---
+@csrf_exempt
+@require_http_methods(["GET"])
+def fudbal_quick_odds(request):
+    """Return quick odds for matches in next 82 hours from fudbal91.com/quick_odds"""
+    try:
+        from . import fudbal91
+        data = fudbal91.fetch_quick_odds()
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def fudbal_odds_changes(request):
+    """Return odds changes within next 82 hours from fudbal91.com/odds_changes"""
+    try:
+        from . import fudbal91
+        data = fudbal91.fetch_odds_changes()
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def fudbal_competition(request):
+    """Return competition fixtures/odds filtered to next 82 hours.
+    Query params:
+      - key: one of [ucl, laliga, epl, bundesliga, seriea, ligue1, serbia]
+      - url: full competition URL (overrides key)
+    """
+    try:
+        from . import fudbal91
+        key = request.GET.get('key', '')
+        url = request.GET.get('url', '')
+        target = url or key or 'ucl'
+        data = fudbal91.fetch_competition(target)
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
 @require_http_methods(["GET"])
 def lessons_view(request):
     try:
