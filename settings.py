@@ -101,27 +101,37 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'wsgi.application'
 
-# Database configuration - always use DATABASE_URL if available
+# Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL')
 RAILWAY_ENV = os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PROJECT_ID')
 
-if DATABASE_URL:
-    # Use PostgreSQL
-    DATABASES = {
-        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=False)
-    }
-    print("🗄️ Using PostgreSQL database")
-else:
-    # Fallback to SQLite for development
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+# On Railway, we must use PostgreSQL
+if RAILWAY_ENV:
+    if not DATABASE_URL:
+        print("❌ DATABASE_URL nije postavljen u Railway okruženju!")
+        # Don't crash immediately, let the app try to start
+    else:
+        DATABASES = {
+            'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=False)
         }
-    }
-    print("🗄️ Using SQLite (development)")
+        print("🚄 Using Railway PostgreSQL database")
+else:
+    # Local development
+    if DATABASE_URL:
+        DATABASES = {
+            'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=False)
+        }
+        print("🗄️ Using PostgreSQL from DATABASE_URL")
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
+        print("🗄️ Using SQLite (development)")
 
-# Test database connection - but don't crash the app if it fails
+# Test database connection
 try:
     import django
     from django.db import connection
@@ -131,9 +141,7 @@ try:
     print("✅ Database connection test successful")
 except Exception as e:
     print(f"❌ Database connection failed: {e}")
-    # Don't crash - let Django handle database errors at runtime
-    if RAILWAY_ENV and not DATABASE_URL:
-        print("⚠️  WARNING: DATABASE_URL nije postavljen u Railway okruženju!")
+    # Don't crash the app
 
 # Authentication
 AUTHENTICATION_BACKENDS = [
