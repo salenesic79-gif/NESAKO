@@ -47,15 +47,7 @@ urlpatterns = [
     path('health', health_view, name='health'),
 ]
 
-# Serve static files in development and production
+# WhiteNoise will serve static files in production
+# Only serve static files via Django in development
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
-else:
-    # Serve from STATIC_ROOT (collected static)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    # Additionally serve directly from STATICFILES_DIRS[0] as fallback (defensive in Render)
-    try:
-        if settings.STATICFILES_DIRS and os.path.isdir(settings.STATICFILES_DIRS[0]):
-            urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
-    except Exception:
-        pass

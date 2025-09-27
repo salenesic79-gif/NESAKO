@@ -18,10 +18,33 @@ APP_VERSION = 'v1.0'
 SECRET_KEY = os.getenv('SECRET_KEY', 'nesako-ai-secret-key-change-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+# Detect Railway environment
+RAILWAY_ENV = os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PROJECT_ID')
 
-# Render deployment configuration
-ALLOWED_HOSTS = ['*']  # Za Render i mobilnu podršku
+# Force DEBUG=False on Railway
+if RAILWAY_ENV:
+    DEBUG = False
+    print("🚄 Railway environment detected - forcing DEBUG=False")
+else:
+    DEBUG = os.getenv('DEBUG', 'True') == 'True'
+    print(f"🔧 DEBUG mode: {DEBUG}")
+
+# Safety warning
+if DEBUG and RAILWAY_ENV:
+    print("⚠️  WARNING: DEBUG is True in Railway production environment!")
+
+# Railway deployment configuration
+RAILWAY_ENV = os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PROJECT_ID')
+RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN')
+
+if RAILWAY_ENV:
+    if RAILWAY_PUBLIC_DOMAIN:
+        ALLOWED_HOSTS = [RAILWAY_PUBLIC_DOMAIN, '.railway.app']
+    else:
+        ALLOWED_HOSTS = ['.railway.app', 'localhost', '127.0.0.1']
+    print(f"🚄 Railway ALLOWED_HOSTS: {ALLOWED_HOSTS}")
+else:
+    ALLOWED_HOSTS = ['*']  # Development
 
 # Force HTTP for local development
 USE_TLS = False
@@ -177,11 +200,17 @@ if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
-    # Trust Railway public domains for CSRF
+    # Trust Railway domains
     CSRF_TRUSTED_ORIGINS = [
-        'https://*.up.railway.app',
-        'https://*.railway.app'
+        'https://*.railway.app',
+        'https://*.up.railway.app'
     ]
+    
+    # Add specific domain if available
+    RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN')
+    if RAILWAY_PUBLIC_DOMAIN:
+        CSRF_TRUSTED_ORIGINS.append(f'https://{RAILWAY_PUBLIC_DOMAIN}')
+        print(f"🔧 Added CSRF trusted origin: https://{RAILWAY_PUBLIC_DOMAIN}")
 else:
     # Development settings
     SECURE_SSL_REDIRECT = False
