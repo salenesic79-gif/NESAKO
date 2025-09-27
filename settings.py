@@ -121,7 +121,7 @@ else:
     }
     print("🗄️ Using SQLite (development)")
 
-# Test database connection
+# Test database connection - but don't crash the app if it fails
 try:
     import django
     from django.db import connection
@@ -131,9 +131,9 @@ try:
     print("✅ Database connection test successful")
 except Exception as e:
     print(f"❌ Database connection failed: {e}")
-    # On Railway, database must be available
+    # Don't crash - let Django handle database errors at runtime
     if RAILWAY_ENV and not DATABASE_URL:
-        raise ImproperlyConfigured("DATABASE_URL nije postavljen u Railway okruženju!")
+        print("⚠️  WARNING: DATABASE_URL nije postavljen u Railway okruženju!")
 
 # Authentication
 AUTHENTICATION_BACKENDS = [

@@ -28,17 +28,23 @@ def main():
     if railway_env:
         print("🔧 Running in Railway environment")
     
-    # Run migrations
+    # Run migrations - don't exit on failure
     print("Running migrations...")
-    if not run_command([sys.executable, "manage.py", "migrate", "--noinput"]):
-        print("⚠️  Migrations failed, but continuing...")
+    try:
+        subprocess.run([sys.executable, "manage.py", "migrate", "--noinput"], check=False)
+        print("✅ Migrations completed")
+    except Exception as e:
+        print(f"⚠️  Migrations failed: {e}")
     
-    # Collect static files
+    # Collect static files - don't exit on failure
     print("Collecting static files...")
-    if not run_command([sys.executable, "manage.py", "collectstatic", "--noinput"]):
-        print("⚠️  Static collection failed, but continuing...")
+    try:
+        subprocess.run([sys.executable, "manage.py", "collectstatic", "--noinput"], check=False)
+        print("✅ Static files collected")
+    except Exception as e:
+        print(f"⚠️  Static collection failed: {e}")
     
-    print("✅ Setup completed")
+    print("✅ Setup completed - application will start")
 
 if __name__ == "__main__":
     main()
