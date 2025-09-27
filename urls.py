@@ -6,6 +6,9 @@ from ai_assistant.views import (
     LoginView,
     LogoutView,
     ProtectedTemplateView,
+    fudbal_quick_odds,
+    fudbal_odds_changes,
+    fudbal_competition,
     lessons_view,
     update_feedback,
     web_check,
@@ -35,6 +38,13 @@ urlpatterns = [
     path('', ProtectedTemplateView.as_view(template_name='index.html'), name='home'),
     # AI Assistant API (protected)
     path('api/chat/', csrf_exempt(DeepSeekAPI.as_view()), name='deepseek_chat'),
+    # Fudbal91 endpoints (read-only)
+    path('api/fudbal/quick_odds', csrf_exempt(fudbal_quick_odds), name='fudbal_quick_odds'),
+    path('api/fudbal/quick_odds/', csrf_exempt(fudbal_quick_odds)),
+    path('api/fudbal/odds_changes', csrf_exempt(fudbal_odds_changes), name='fudbal_odds_changes'),
+    path('api/fudbal/odds_changes/', csrf_exempt(fudbal_odds_changes)),
+    path('api/fudbal/competition', csrf_exempt(fudbal_competition), name='fudbal_competition'),
+    path('api/fudbal/competition/', csrf_exempt(fudbal_competition)),
     # Git sync endpoint
     path('api/git-sync/', csrf_exempt(git_sync_view), name='git_sync'),
     # Session preferences endpoint
