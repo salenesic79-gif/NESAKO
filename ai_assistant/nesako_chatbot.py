@@ -5,10 +5,11 @@ import json
 from typing import List, Optional, Dict
 from scipy.optimize import minimize
 from .models import MemoryEntry, Conversation, LearningData
+from dotenv import load_dotenv
+from bs4 import BeautifulSoup
 
 SERPAPI_API_KEY = os.getenv('SERPAPI_API_KEY', '')
-DEEPSEEK_API_URL = os.getenv('DEEPSEEK_API_URL', 'https://api.deepseek.com/v1/chat/completions')
-DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
+DEEPSEEK_API_URL_DEFAULT = 'https://api.deepseek.com/v1/chat/completions'
 
 class NESAKOMemoryORM:
     """ORM-backed persistent memory using Django models."""
@@ -472,10 +473,35 @@ class NESAKOChatbot:
         response += "\nIzvor: Google Search API\n\n⚠️ *Ove informacije mogu biti neažurne ili netačne*"
         return response
 
+    def _simple_web_search(self, query: str) -> List[str]:
+        """Minimalna web pretraga bez API ključa preko DuckDuckGo HTML rezultata.
+        Vraća listu kratkih snippeta (max 3)."""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        url = f"https://duckduckgo.com/html/?q={requests.utils.quote(query)}"
+        r = requests.get(url, headers=headers, timeout=8)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, 'html.parser')
+        results: List[str] = []
+        for res in soup.select('div.result__snippet')[:3]:
+            text = res.get_text(" ", strip=True)
+            if text:
+                # ograniči dužinu na ~200 karaktera
+                results.append(text[:200])
+        return results
+
     def get_response(self, user_input: str) -> str:
         # Sportska pitanja obavezno idu kroz web pretragu
         if any(keyword in user_input.lower() for keyword in self.sports_keywords):
             results = self.search_web(user_input)
+            if not results:
+                # Fallback na jednostavnu pretragu bez API ključa
+                try:
+                    results = self._simple_web_search(user_input)
+                except Exception:
+                    results = []
             if results:
                 # Add disclaimer to make it clear this is from web search
                 formatted = self.format_search_results(results)
@@ -493,6 +519,14 @@ class NESAKOChatbot:
         if direct_mem:
             # Add disclaimer for memory-based responses
             return f"{direct_mem}\n\nℹ️ *Ovo je zapamćena informacija iz prethodnih razgovora*"
+
+        # Small-talk i kratki pozdravi – odgovaraj prirodno, bez web pretrage
+        try:
+            smalltalk = user_input.lower().strip()
+            if re.search(r"\b(zdravo|cao|ćao|hej|hello|hi)\b", smalltalk) or 'kako si' in smalltalk:
+                return "Ćao! Tu sam i spreman da pomognem. Reci kako mogu da ti pomognem? 😊"
+        except Exception:
+            pass
 
         # Generalni odgovor preko DeepSeek (ako je konfigurisan) ili fallback
         response = self.generate_response(user_input)
@@ -529,8 +563,10 @@ ODGOVORI U SKLADU SA PROTOKOLOM:
 - "Za tačne i ažurne podatke, preporučujem direktnu proveru"
 """
 
+        # Allow model override via env (default deepseek-chat)
+        model_name = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat') or 'deepseek-chat'
         payload = {
-            "model": "deepseek-chat",
+            "model": model_name,
             "messages": [
                 {"role": "system", "content": enhanced_system_prompt},
                 {"role": "user", "content": user_input}
@@ -542,14 +578,81 @@ ODGOVORI U SKLADU SA PROTOKOLOM:
             "presence_penalty": 0.5  # Penalize new concepts to stay on topic
         }
 
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        } if DEEPSEEK_API_KEY else None
+        # Reload .env to capture latest changes without restarting the server (no key exposure)
+        try:
+            load_dotenv(override=True)
+        except Exception:
+            pass
+
+        # Read API config at request-time to reflect latest changes without restart
+        api_url = os.getenv('DEEPSEEK_API_URL', DEEPSEEK_API_URL_DEFAULT)
+        # Prepare alternate OpenAI-compatible path just in case provider uses a different base
+        alt_api_url = api_url.replace('/v1/', '/openai/v1/') if '/v1/' in api_url else api_url
+        raw_key = os.getenv('DEEPSEEK_API_KEY', '')
+        org = os.getenv('DEEPSEEK_ORG', '').strip()
+        # Sanitize key to avoid common .env mistakes (quotes/spaces/newlines)
+        api_key = (raw_key or '').strip().strip('"').strip("'")
+
+        headers = None
+        if api_key:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            if org:
+                headers["X-Organization"] = org
+
+        def _local_fallback(text: str) -> str:
+            """Construct a useful local reply without external AI, avoiding hallucinations."""
+            try:
+                text_lower = (text or '').lower()
+                # Prefer safe, structured output
+                parts = [
+                    "Razumeo sam vaš zahtev.",
+                    "Evo kako mogu da pomognem odmah, bez AI servisa:",
+                ]
+                # Basic intent hints
+                if any(k in text_lower for k in ["kako", "objasni", "šta je", "sto je", "sta je"]):
+                    parts.append("• Kratak pregled: Mogu da objasnim temu korak-po-korak i dam praktičan primer.")
+                if any(k in text_lower for k in ["kod", "code", "python", "javascript", "sql", "html", "css"]):
+                    parts.append("• Tehnički savet: Ako pošaljete deo koda, mogu da ga analiziram i predložim ispravke.")
+                if any(k in text_lower for k in ["sport", "rezultat", "utakmica", "liga"]):
+                    parts.append("• Sportske informacije zahtevaju web pretragu; mogu pokušati sa opštim savetima ili formatom rezultata.")
+                # Generic guidance
+                parts.append("• Možete zadati precizniji zahtev (npr. 'objasni X u 3 koraka' ili 'optimizuj ovaj kod').")
+                response = "\n".join(parts)
+                # Add standard disclaimer
+                response += "\n\nℹ️ *Ovo je lokalni odgovor bez AI servisa. Proverite kritične informacije.*"
+                return response
+            except Exception:
+                return "Trenutno nemam pristup AI servisu. Molim pokušajte ponovo kasnije."
 
         try:
             if headers:
-                r = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=30)
+                r = requests.post(api_url, headers=headers, json=payload, timeout=20)
+                if r.status_code == 401:
+                    # Retry with alternate header schema used by some providers
+                    alt_headers = {
+                        "X-API-Key": api_key,
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    }
+                    if org:
+                        alt_headers["X-Organization"] = org
+                    r = requests.post(api_url, headers=alt_headers, json=payload, timeout=20)
+                if (r.status_code in (401, 404)) and alt_api_url != api_url:
+                    # Try alternate OpenAI-compatible path
+                    r = requests.post(alt_api_url, headers=headers, json=payload, timeout=20)
+                    if r.status_code == 401:
+                        alt_headers = {
+                            "X-API-Key": api_key,
+                            "Content-Type": "application/json",
+                            "Accept": "application/json"
+                        }
+                        if org:
+                            alt_headers["X-Organization"] = org
+                        r = requests.post(alt_api_url, headers=alt_headers, json=payload, timeout=20)
                 if r.ok:
                     data = r.json()
                     content = (
@@ -558,29 +661,39 @@ ODGOVORI U SKLADU SA PROTOKOLOM:
                         .get('content', '')
                     )
                     if content:
-                        # Validate response doesn't contain hallucinations
                         validated_content = self.validate_response_for_hallucinations(content, user_input)
-                        
-                        # učenje iz konverzacije
                         try:
                             self.learn_from_conversation(user_input, validated_content)
                             self.memory.store_conversation(user_input, validated_content)
                         except Exception:
                             pass
                         return validated_content
-                # ako API ne odgovori korektno
-                return "Trenutno ne mogu da dohvatim odgovor od AI servisa. Molim pokušajte ponovo."
-            else:
-                # Fallback bez API ključa - beži od izmišljanja
-                fallback_response = "Trenutno nemam pristup AI servisu za generisanje odgovora. Molim pokušajte ponovo kasnije ili koristite web pretragu za tačne informacije."
+                # Non-OK -> local fallback (no key exposure)
+                fb = _local_fallback(user_input)
                 try:
-                    self.learn_from_conversation(user_input, fallback_response)
-                    self.memory.store_conversation(user_input, fallback_response)
+                    self.learn_from_conversation(user_input, fb)
+                    self.memory.store_conversation(user_input, fb)
                 except Exception:
                     pass
-                return fallback_response
-        except Exception as e:
-            return f"Trenutno ne mogu da obradim vaš zahtev zbog tehničke greške: {str(e)}"
+                return fb
+            else:
+                # No key -> local fallback
+                fb = _local_fallback(user_input)
+                try:
+                    self.learn_from_conversation(user_input, fb)
+                    self.memory.store_conversation(user_input, fb)
+                except Exception:
+                    pass
+                return fb
+        except Exception:
+            # Network or parsing error -> local fallback
+            fb = _local_fallback(user_input)
+            try:
+                self.learn_from_conversation(user_input, fb)
+                self.memory.store_conversation(user_input, fb)
+            except Exception:
+                pass
+            return fb
 
     def validate_response_for_hallucinations(self, response: str, user_input: str) -> str:
         """

@@ -1,4 +1,9 @@
-import sqlite3
+try:
+    import sqlite3  # Not available on Railway base image
+    HAS_SQLITE = True
+except Exception:
+    sqlite3 = None
+    HAS_SQLITE = False
 import json
 import os
 from datetime import datetime, timedelta
@@ -9,19 +14,26 @@ class PersistentMemoryManager:
     """Fizička memorija koja čuva sve konverzacije i učenje na disku"""
     
     def __init__(self, db_path: str = None):
+        # If sqlite3 is not available (Railway images), switch to disabled fallback
+        self.disabled = not HAS_SQLITE
         if db_path is None:
             # Kreiranje baze u NESAKO direktorijumu
             base_dir = os.path.dirname(os.path.dirname(__file__))
             self.db_path = os.path.join(base_dir, 'nesako_memory.db')
         else:
             self.db_path = db_path
-            
+        
         self.lock = threading.Lock()
-        self._init_database()
-        print(f"Memory Manager initialized with database: {self.db_path}")
+        if not self.disabled:
+            self._init_database()
+            print(f"Memory Manager initialized with database: {self.db_path}")
+        else:
+            print("Memory Manager running in FALLBACK mode (sqlite3 not available) — persistence disabled.")
     
     def _init_database(self):
         """Kreiranje tabela za memoriju"""
+        if self.disabled:
+            return
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
@@ -99,6 +111,9 @@ class PersistentMemoryManager:
                          chat_id: str = None, tools_used: List[str] = None, 
                          context_data: Dict = None) -> int:
         """Čuva konverzaciju u bazu"""
+        if self.disabled:
+            # No-op in fallback, just pretend success
+            return 1
         with self.lock:
             try:
                 with sqlite3.connect(self.db_path) as conn:
@@ -129,6 +144,8 @@ class PersistentMemoryManager:
     
     def get_conversation_history(self, session_id: str, limit: int = 20) -> List[Dict]:
         """Vraća istoriju konverzacije"""
+        if self.disabled:
+            return []
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -163,6 +180,8 @@ class PersistentMemoryManager:
     
     def save_learning_data(self, session_id: str, category: str, data: Dict, confidence: float = 0.5):
         """Čuva naučene podatke o korisniku"""
+        if self.disabled:
+            return
         with self.lock:
             try:
                 with sqlite3.connect(self.db_path) as conn:
@@ -182,6 +201,18 @@ class PersistentMemoryManager:
     
     def get_learning_profile(self, session_id: str) -> Dict:
         """Vraća kompletan profil učenja korisnika"""
+        if self.disabled:
+            return {
+                'programming_languages': [],
+                'frameworks': [],
+                'project_types': [],
+                'coding_style': 'standard',
+                'complexity_preference': 'intermediate',
+                'communication_style': 'direct',
+                'learning_speed': 'normal',
+                'last_topics': [],
+                'confidence_scores': {}
+            }
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -224,6 +255,8 @@ class PersistentMemoryManager:
     
     def add_ai_module(self, module_name: str, module_code: str, config: Dict = None) -> bool:
         """Dodaje novi AI modul u sistem"""
+        if self.disabled:
+            return True
         with self.lock:
             try:
                 with sqlite3.connect(self.db_path) as conn:
@@ -245,6 +278,8 @@ class PersistentMemoryManager:
     
     def get_active_modules(self) -> List[Dict]:
         """Vraća sve aktivne AI module"""
+        if self.disabled:
+            return []
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -276,6 +311,8 @@ class PersistentMemoryManager:
     
     def save_task(self, task_id: str, description: str, status: str = 'pending') -> bool:
         """Čuva task u bazu"""
+        if self.disabled:
+            return True
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -295,6 +332,8 @@ class PersistentMemoryManager:
     
     def update_task_status(self, task_id: str, status: str, result: str = None) -> bool:
         """Ažurira status task-a"""
+        if self.disabled:
+            return True
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -322,6 +361,8 @@ class PersistentMemoryManager:
     def log_file_operation(self, operation_type: str, file_path: str, 
                           operation_data: Dict = None, success: bool = False) -> bool:
         """Loguje file operacije"""
+        if self.disabled:
+            return True
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -342,6 +383,8 @@ class PersistentMemoryManager:
     
     def cleanup_old_data(self, days_to_keep: int = 30):
         """Briše stare podatke starije od N dana"""
+        if self.disabled:
+            return
         try:
             cutoff_date = datetime.now() - timedelta(days=days_to_keep)
             
@@ -384,6 +427,13 @@ class PersistentMemoryManager:
     
     def get_memory_stats(self) -> Dict:
         """Vraća statistike memorije"""
+        if self.disabled:
+            return {
+                'total_conversations': 0,
+                'active_modules': 0,
+                'total_tasks': 0,
+                'db_size_mb': 0.0
+            }
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()

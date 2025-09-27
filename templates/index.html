@@ -33,6 +33,43 @@
             padding: 0;
             box-sizing: border-box;
         }
+
+        // --- Preferences sync with server ---
+        async function loadPreferences() {
+            try {
+                const res = await fetch('/api/preferences/', { credentials: 'same-origin' });
+                if (res.ok) {
+                    const data = await res.json();
+                    autoModulesEnabled = !!data.auto_modules_enabled;
+                }
+            } catch (e) { /* ignore */ }
+            const toggle = document.getElementById('auto-modules-toggle');
+            if (toggle) {
+                toggle.checked = !!autoModulesEnabled;
+            }
+        }
+
+        async function savePreferences(enabled) {
+            try {
+                await fetch('/api/preferences/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ auto_modules_enabled: !!enabled }),
+                    credentials: 'same-origin'
+                });
+            } catch (e) { /* ignore */ }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadPreferences();
+            const toggle = document.getElementById('auto-modules-toggle');
+            if (toggle) {
+                toggle.addEventListener('change', (e) => {
+                    autoModulesEnabled = !!e.target.checked;
+                    savePreferences(autoModulesEnabled);
+                });
+            }
+        });
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -827,6 +864,10 @@
                 <span class="memory-stats" id="memoryStats">Memorija: 0 chat-ova</span>
                 <span id="message-count" style="margin-left: 10px;">Poruke: 0</span>
                 <span id="session-time" style="margin-left: 10px;">Vreme: 0m</span>
+                <label style="margin-left: 12px; display:flex; align-items:center; gap:6px; font-size:12px; color:#333; background:#fff; padding:4px 8px; border-radius:12px; border:1px solid #e0e0f0;">
+                    <input type="checkbox" id="auto-modules-toggle" />
+                    Auto moduli
+                </label>
             </div>
         </div>
         
@@ -966,6 +1007,8 @@ Možete koristiti:
         // User preferences
         let autoOpenTaskPanel = false; // do not auto-open task panel
         let enableComplexTasks = false; // temporarily disable complex flow to stabilize UX
+        // Preference: auto modules (synced with server session)
+        let autoModulesEnabled = true;
         
         // Initialize chat sessions
         function initializeSessions() {
@@ -1256,17 +1299,150 @@ Možete koristiti:
             if (metadata.tools_used) metaInfo += ' • Tools';
             if (metadata.context_aware) metaInfo += ' • Context';
             
-            messageDiv.innerHTML = `
-                ${content}
+            // Build inner HTML
+            const metaHtml = `
                 <div class="message-meta">
                     <span>${metaInfo}</span>
                     <span>${formatTime(timestamp)}</span>
-                </div>
-            `;
+                </div>`;
+
+            // For AI messages, add a small 'Izvor' button to fetch web sources
+            if (!isUser) {
+                // Find the last user message content to use as query
+                let lastUserContent = '';
+                for (let i = conversationHistory.length - 1; i >= 0; i--) {
+                    if (conversationHistory[i] && conversationHistory[i].isUser) {
+                        lastUserContent = conversationHistory[i].content || '';
+                        break;
+                    }
+                }
+
+                const contentHtml = `<div class="message-content">${content}</div>`;
+                const actionsHtml = `
+                    <div class="message-actions">
+                        <button class="source-btn" title="Prikaži izvore" ${lastUserContent ? '' : 'disabled'}>
+                            📎 Izvor
+                        </button>
+                    </div>`;
+                messageDiv.innerHTML = `${contentHtml}${actionsHtml}${metaHtml}`;
+
+                // Wire up source button
+                const btn = messageDiv.querySelector('.source-btn');
+                if (btn && lastUserContent) {
+                    btn.addEventListener('click', async () => {
+                        await fetchAndShowSources(messageDiv, lastUserContent, btn);
+                    });
+                }
+            } else {
+                // User message: simple rendering
+                messageDiv.innerHTML = `
+                    ${content}
+                    ${metaHtml}
+                `;
+            }
             
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
+
+        // Render quick follow-up actions under the last AI message to improve chat feel
+        function renderQuickActions(messageDiv, lastUserContent = '') {
+            try {
+                if (!messageDiv || !messageDiv.classList.contains('ai-message')) return;
+                // Avoid duplicates
+                if (messageDiv.querySelector('.quick-actions')) return;
+
+                const qa = document.createElement('div');
+                qa.className = 'quick-actions';
+                qa.style.cssText = 'margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;';
+
+                const actions = [
+                    { label: 'Objasni jednostavnije', build: (q) => `Objasni jednostavnije: ${q}` },
+                    { label: 'Daj primer', build: (q) => `Daj praktičan primer za: ${q}` },
+                    { label: 'Nastavi', build: (q) => `Nastavi detaljnije: ${q}` },
+                    { label: 'Sažmi u 3 tačke', build: (q) => `Sažmi u tri ključne tačke: ${q}` }
+                ];
+
+                actions.forEach(a => {
+                    const btn = document.createElement('button');
+                    btn.textContent = a.label;
+                    btn.className = 'qa-btn';
+                    btn.style.cssText = 'background:#f3f4f6;color:#111;border:1px solid #e5e7eb;border-radius:14px;padding:6px 10px;font-size:12px;cursor:pointer;';
+                    btn.addEventListener('click', () => {
+                        const prompt = a.build(lastUserContent || 'prethodna tema');
+                        sendFollowUp(prompt);
+                    });
+                    qa.appendChild(btn);
+                });
+
+                const contentDiv = messageDiv.querySelector('.message-content') || messageDiv;
+                contentDiv.appendChild(qa);
+            } catch (e) { /* noop */ }
+        }
+
+        // Helper to send follow-up message quickly
+        function sendFollowUp(text) {
+            const input = document.getElementById('user-input');
+            if (!input) return;
+            input.value = text;
+            // trigger normal send flow
+            if (typeof sendMessage === 'function') {
+                sendMessage();
+            }
+        }
+
+        // Fetch and append sources inline at the end of the AI message content (with clickable URLs)
+async function fetchAndShowSources(messageDiv, query, btn) {
+    try {
+        // Avoid duplicate rendering
+        if (messageDiv.querySelector('.sources-inline')) {
+            const existing = messageDiv.querySelector('.sources-inline');
+            existing.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            return;
+        }
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Izvori...';
+        }
+        const res = await fetch(`/web_check?q=${encodeURIComponent(query)}`);
+        let containerHtml = '';
+        if (res.ok) {
+            const data = await res.json();
+            const results = Array.isArray(data.results) ? data.results : [];
+            if (results.length === 0) {
+                containerHtml = `<div class="sources-inline" style="margin-top:8px;color:#666;font-size:13px;">Nema dostupnih izvora.</div>`;
+            } else {
+                // Build inline list with clickable links and short quotes
+                const items = results.map((r, idx) => {
+                    const safeTitle = (r.title || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const safeUrl = (r.url || '').replace(/"/g, '&quot;');
+                    const safeSnippet = (r.snippet || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const link = safeUrl ? `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeTitle || safeUrl}</a>` : (safeTitle || 'Nepoznat izvor');
+                    const quote = safeSnippet ? ` — “${safeSnippet}”` : '';
+                    return `<li style="margin:4px 0;">${idx + 1}. ${link}${quote}</li>`;
+                }).join('');
+                containerHtml = `
+                    <div class="sources-inline" style="margin-top:8px;border-top:1px dashed #e0e0f0;padding-top:8px;">
+                        <div style="font-weight:600;color:#333;margin-bottom:6px;">Izvori</div>
+                        <ul style="padding-left:18px;margin:0;">${items}</ul>
+                    </div>`;
+            }
+        } else {
+            containerHtml = `<div class="sources-inline" style="margin-top:8px;color:#c0392b;">Greška pri učitavanju izvora (HTTP ${res.status})</div>`;
+        }
+        // Append to the message content block so it appears as part of the same AI poruke
+        const contentDiv = messageDiv.querySelector('.message-content') || messageDiv;
+        contentDiv.insertAdjacentHTML('beforeend', containerHtml);
+    } catch (e) {
+        const contentDiv = messageDiv.querySelector('.message-content') || messageDiv;
+        contentDiv.insertAdjacentHTML('beforeend', `<div class="sources-inline" style="margin-top:8px;color:#d35400;">Greška pri učitavanju izvora.</div>`);
+    } finally {
+        if (btn) {
+            btn.textContent = '📎 Izvor';
+            btn.disabled = false;
+        }
+    }
+}
 
         // Fallback function if addAIMessage is called somewhere else
         function addAIMessage(content, metadata = {}) {
@@ -1604,6 +1780,8 @@ Možete koristiti:
             
             const loading = document.getElementById('loading');
             loading.style.display = 'none';
+            const input = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
             
             // Handle authentication errors
             if (data.status === 'unauthorized') {
@@ -1633,22 +1811,72 @@ Možete koristiti:
                 return;
             }
             
-            if (data.status === 'success' || data.response) {
-                console.log('Adding AI response to chat:', data.response);
-                
-                // Direct message add - bypass typing simulation for now
-                addMessage(data.response, false, {
-                    mode: data.mode || 'standard',
-                    tools_used: data.tools_used || false,
-                    context_aware: data.context_aware || false
-                });
+            if (data.status === 'success' || data.status === 'executing' || data.status === 'progress') {
+                if (data.status === 'progress') {
+                    updateProgress(data.progress || 5);
+                    addMessage(data.response || '⏳ U toku...', false, { mode: 'progress' });
+                } else {
+                    addMessage(data.response || 'Nema odgovora', false, {
+                        mode: data.mode || 'definitivni_asistent',
+                        contextAware: data.context_aware || false,
+                        usedTools: data.tools_used || false
+                    });
+                    // Render quick follow-up actions to make chat feel more conversational
+                    try {
+                        let lastUserContent = '';
+                        for (let i = conversationHistory.length - 1; i >= 0; i--) {
+                            if (conversationHistory[i] && conversationHistory[i].isUser) {
+                                lastUserContent = conversationHistory[i].content || '';
+                                break;
+                            }
+                        }
+                        const messagesContainer = document.getElementById('chat-messages');
+                        const lastMsg = messagesContainer ? messagesContainer.lastElementChild : null;
+                        if (lastMsg && lastMsg.classList.contains('ai-message')) {
+                            renderQuickActions(lastMsg, lastUserContent);
+                        }
+                    } catch (e) { /* noop */ }
+                    // Auto-append sources only when backend used web synthesis
+                    if (data.used_web_synthesis === true) {
+                        try {
+                            let lastUserContent = '';
+                            for (let i = conversationHistory.length - 1; i >= 0; i--) {
+                                if (conversationHistory[i] && conversationHistory[i].isUser) {
+                                    lastUserContent = conversationHistory[i].content || '';
+                                    break;
+                                }
+                            }
+                            const messagesContainer = document.getElementById('chat-messages');
+                            const lastMsg = messagesContainer ? messagesContainer.lastElementChild : null;
+                            if (lastMsg && lastMsg.classList.contains('ai-message') && lastUserContent) {
+                                fetchAndShowSources(lastMsg, lastUserContent, null);
+                            }
+                        } catch (e) {
+                            console.warn('Auto-izvori greška:', e);
+                        }
+                    }
+                }
                 updateStatus('Spreman za rad', false);
                 isTyping = false;
+                // Re-enable input
+                if (input) {
+                    input.disabled = false;
+                    input.value = '';
+                    try { updateCharCounter(); autoResize(); } catch (e) {}
+                    input.focus();
+                }
+                if (sendBtn) sendBtn.disabled = false;
             } else {
                 console.log('Error response:', data.error);
                 addMessage(`Greška: ${data.error}`, false, { mode: 'error' });
                 updateStatus('Greška u obradi', false);
                 isTyping = false;
+                // Also re-enable input on error to avoid blocking UI
+                if (input) {
+                    input.disabled = false;
+                    input.focus();
+                }
+                if (sendBtn) sendBtn.disabled = false;
             }
         }
         
