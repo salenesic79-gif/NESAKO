@@ -1,5 +1,6 @@
 from django.urls import path, include
 from django.views.generic import TemplateView
+from django.contrib import admin
 from ai_assistant.views import (
     DeepSeekAPI,
     LoginView,
@@ -25,6 +26,8 @@ def favicon_view(request):
 urlpatterns = [
     # Favicon to prevent 404 errors
     path('favicon.ico', favicon_view, name='favicon'),
+    # Django admin
+    path('admin/', admin.site.urls),
     # Login/Logout
     path('login/', csrf_exempt(LoginView.as_view()), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
