@@ -9,7 +9,7 @@ from django.core.exceptions import ImproperlyConfigured
 load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent
 
 # Jedinstveni identifikatori za NESAKO AI
 APP_NAME = 'nesako-ai-assistant'
@@ -101,48 +101,39 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'wsgi.application'
 
-# Database configuration
+# Database configuration - always use DATABASE_URL if available
 DATABASE_URL = os.getenv('DATABASE_URL')
 RAILWAY_ENV = os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PROJECT_ID')
 
-# On Railway, we must use PostgreSQL
-if RAILWAY_ENV:
-    if not DATABASE_URL:
-        raise ImproperlyConfigured("DATABASE_URL nije postavljen u Railway okruženju!")
-    
+if DATABASE_URL:
     # Use PostgreSQL
     DATABASES = {
         'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=False)
     }
-    print("🚄 Using Railway PostgreSQL database")
-    
+    print("🗄️ Using PostgreSQL database")
 else:
-    # Local development - use SQLite if no DATABASE_URL
-    if DATABASE_URL:
-        DATABASES = {
-            'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=False)
+    # Fallback to SQLite for development
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
         }
-        print("🗄️ Using PostgreSQL from DATABASE_URL (development)")
-    else:
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.sqlite3',
-                'NAME': BASE_DIR / 'db.sqlite3',
-            }
-        }
-        print("🗄️ Using SQLite (development)")
+    }
+    print("🗄️ Using SQLite (development)")
 
 # Test database connection
 try:
+    import django
     from django.db import connection
+    django.setup()
     with connection.cursor() as cursor:
         cursor.execute("SELECT 1")
     print("✅ Database connection test successful")
 except Exception as e:
     print(f"❌ Database connection failed: {e}")
-    if RAILWAY_ENV:
-        # On Railway, database must work
-        raise
+    # On Railway, database must be available
+    if RAILWAY_ENV and not DATABASE_URL:
+        raise ImproperlyConfigured("DATABASE_URL nije postavljen u Railway okruženju!")
 
 # Authentication
 AUTHENTICATION_BACKENDS = [
