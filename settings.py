@@ -166,7 +166,7 @@ if not DEEPSEEK_API_KEY:
     print("⚠️  WARNING: DEEPSEEK_API_KEY nije konfigurisan!")
     print("ℹ️   Sistem će koristiti fallback mode bez AI servisa")
 else:
-    print(f"✅ DEEPSEEK_API_KEY je konfigurisan (dužina: {len(DEEPSEEK_API_KEY)})")
+    print("✅ DEEPSEEK_API_KEY je konfigurisan")
 
 # SerpAPI Configuration
 SERPAPI_API_KEY = os.getenv('SERPAPI_API_KEY', '')
