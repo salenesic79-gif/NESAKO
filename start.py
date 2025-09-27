@@ -31,29 +31,35 @@ def main():
     # Set Django settings
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'NESAKO.settings')
     
-    # Run migrations
+    # Run migrations - don't exit on failure
     print("Running migrations...")
-    result = subprocess.run([sys.executable, "manage.py", "migrate", "--noinput"], 
-                          capture_output=True, text=True)
-    if result.returncode == 0:
-        print("✅ Migrations completed successfully")
-    else:
-        print(f"⚠️  Migrations failed with return code {result.returncode}")
-        if result.stderr:
-            print(f"Error: {result.stderr}")
+    try:
+        result = subprocess.run([sys.executable, "manage.py", "migrate", "--noinput"], 
+                              capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            print("✅ Migrations completed successfully")
+        else:
+            print(f"⚠️  Migrations failed with return code {result.returncode}")
+            if result.stderr:
+                print(f"Error: {result.stderr}")
+    except Exception as e:
+        print(f"⚠️  Migrations failed with exception: {e}")
     
-    # Collect static files
+    # Collect static files - don't exit on failure
     print("Collecting static files...")
-    result = subprocess.run([sys.executable, "manage.py", "collectstatic", "--noinput"], 
-                          capture_output=True, text=True)
-    if result.returncode == 0:
-        print("✅ Static files collected successfully")
-    else:
-        print(f"⚠️  Static collection failed with return code {result.returncode}")
-        if result.stderr:
-            print(f"Error: {result.stderr}")
+    try:
+        result = subprocess.run([sys.executable, "manage.py", "collectstatic", "--noinput"], 
+                              capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            print("✅ Static files collected successfully")
+        else:
+            print(f"⚠️  Static collection failed with return code {result.returncode}")
+            if result.stderr:
+                print(f"Error: {result.stderr}")
+    except Exception as e:
+        print(f"⚠️  Static collection failed with exception: {e}")
     
-    print("✅ Setup completed")
+    print("✅ Setup completed - application will start")
 
 if __name__ == "__main__":
     main()
