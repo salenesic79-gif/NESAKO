@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # Load environment variables
 load_dotenv()
@@ -24,8 +25,9 @@ ALLOWED_HOSTS = ['*']  # Za Render i mobilnu podršku
 
 # Force HTTP for local development
 USE_TLS = False
-SECURE_SSL_REDIRECT = False
-SECURE_PROXY_SSL_HEADER = None
+SECURE_SSL_REDIRECT = False  # Do not force within container; Railway terminates TLS at edge
+# Honor X-Forwarded-Proto from Railway proxy so Django knows request scheme
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Application definition
 INSTALLED_APPS = [
@@ -75,13 +77,45 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'wsgi.application'
 
-# Database: use DATABASE_URL if provided (Render Postgres), else fallback to SQLite
+# Database: use DATABASE_URL if provided (Render/Railway Postgres), else fallback to SQLite (only locally)
+RAILWAY_ENV = os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PROJECT_ID') or os.getenv('RAILWAY_STATIC_URL')
 DATABASE_URL = os.getenv('DATABASE_URL')
+try:
+    print(f"🏗️ Environment: DEBUG={DEBUG}, RAILWAY_ENV={'yes' if RAILWAY_ENV else 'no'}")
+    print(f"🔎 DATABASE_URL present={bool(DATABASE_URL)}, length={len(DATABASE_URL) if DATABASE_URL else 0}")
+except Exception:
+    pass
 if DATABASE_URL:
+    # Railway internal Postgres hostname (railway.internal) usually doesn't use SSL.
+    # If detected, disable SSL requirement to avoid connection errors.
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(DATABASE_URL)
+        host = (parsed.hostname or '').lower()
+        use_ssl = not host.endswith('.railway.internal')
+    except Exception:
+        use_ssl = True
+    # Debug print to deployment logs so we can verify DB detection
+    try:
+        print(f"🗄️ Using DATABASE_URL host={host}, ssl_require={use_ssl}")
+    except Exception:
+        pass
     DATABASES = {
-        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=True)
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=use_ssl)
     }
 else:
+    # On Railway (regardless of DEBUG), never fall back to SQLite — image may not have libsqlite3.
+    if RAILWAY_ENV:
+        raise ImproperlyConfigured(
+            "DATABASE_URL nije postavljen u Railway okruženju. Podesite Postgres i promenljivu DATABASE_URL u Service → Variables."
+        )
+    # In production outside Railway, also require DATABASE_URL
+    if not DEBUG and not RAILWAY_ENV:
+        raise ImproperlyConfigured(
+            "DATABASE_URL nije postavljen u production okruženju."
+        )
+    # Development fallback only
+    print("🗄️ Using SQLite (development fallback)")
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -136,12 +170,18 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    SECURE_SSL_REDIRECT = True
+    # Do not force SSL redirect inside the dyno; Railway already handles HTTPS
+    SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
+    # Trust Railway public domains for CSRF
+    CSRF_TRUSTED_ORIGINS = [
+        'https://*.up.railway.app',
+        'https://*.railway.app'
+    ]
 else:
     # Development settings
     SECURE_SSL_REDIRECT = False
