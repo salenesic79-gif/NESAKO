@@ -56,6 +56,8 @@ Thumbs.db
 # Database files - don't track database files in version control
 *.sqlite3
 *.db
+db.sqlite3
+nesako_ai_assistant.sqlite3
 
 # Logs
 *.log

@@ -101,51 +101,48 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'wsgi.application'
 
-# Database: use DATABASE_URL if provided (Render/Railway Postgres), else fallback to SQLite (only locally)
-RAILWAY_ENV = os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PROJECT_ID') or os.getenv('RAILWAY_STATIC_URL')
+# Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL')
-try:
-    print(f"🏗️ Environment: DEBUG={DEBUG}, RAILWAY_ENV={'yes' if RAILWAY_ENV else 'no'}")
-    print(f"🔎 DATABASE_URL present={bool(DATABASE_URL)}, length={len(DATABASE_URL) if DATABASE_URL else 0}")
-except Exception:
-    pass
-if DATABASE_URL:
-    # Railway internal Postgres hostname (railway.internal) usually doesn't use SSL.
-    # If detected, disable SSL requirement to avoid connection errors.
-    try:
-        from urllib.parse import urlparse
-        parsed = urlparse(DATABASE_URL)
-        host = (parsed.hostname or '').lower()
-        use_ssl = not host.endswith('.railway.internal')
-    except Exception:
-        use_ssl = True
-    # Debug print to deployment logs so we can verify DB detection
-    try:
-        print(f"🗄️ Using DATABASE_URL host={host}, ssl_require={use_ssl}")
-    except Exception:
-        pass
+RAILWAY_ENV = os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PROJECT_ID')
+
+# On Railway, we must use PostgreSQL
+if RAILWAY_ENV:
+    if not DATABASE_URL:
+        raise ImproperlyConfigured("DATABASE_URL nije postavljen u Railway okruženju!")
+    
+    # Use PostgreSQL
     DATABASES = {
-        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=use_ssl)
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=False)
     }
+    print("🚄 Using Railway PostgreSQL database")
+    
 else:
-    # On Railway (regardless of DEBUG), never fall back to SQLite — image may not have libsqlite3.
-    if RAILWAY_ENV:
-        raise ImproperlyConfigured(
-            "DATABASE_URL nije postavljen u Railway okruženju. Podesite Postgres i promenljivu DATABASE_URL u Service → Variables."
-        )
-    # In production outside Railway, also require DATABASE_URL
-    if not DEBUG and not RAILWAY_ENV:
-        raise ImproperlyConfigured(
-            "DATABASE_URL nije postavljen u production okruženju."
-        )
-    # Development fallback only
-    print("🗄️ Using SQLite (development fallback)")
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'nesako_ai_assistant.sqlite3',
+    # Local development - use SQLite if no DATABASE_URL
+    if DATABASE_URL:
+        DATABASES = {
+            'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=False)
         }
-    }
+        print("🗄️ Using PostgreSQL from DATABASE_URL (development)")
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
+        print("🗄️ Using SQLite (development)")
+
+# Test database connection
+try:
+    from django.db import connection
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT 1")
+    print("✅ Database connection test successful")
+except Exception as e:
+    print(f"❌ Database connection failed: {e}")
+    if RAILWAY_ENV:
+        # On Railway, database must work
+        raise
 
 # Authentication
 AUTHENTICATION_BACKENDS = [
