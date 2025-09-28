@@ -949,11 +949,36 @@ class DeepSeekAPI(View):
             # --- Sports router: SofaScore as primary (fixtures), Fudbal91 as optional odds enrichment ---
             try:
                 text_lc = (user_input or '').lower()
+                
+                # ALIAS MAPPING
+                alias_map = {
+                    'ars': 'arsenal', 'arsenal': 'arsenal',
+                    'man city': 'manchester city', 'manchester city': 'manchester city',
+                    'man utd': 'manchester united', 'manchester united': 'manchester united',
+                    'zvezda': 'crvena zvezda', 'crvena zvezda': 'crvena zvezda',
+                    'partizan': 'partizan',
+                    'pl': 'premier league', 'prem': 'premier league',
+                    'ls': 'champions league', 'ucl': 'champions league',
+                    'epl': 'premier league', 'laliga': 'la liga', 
+                    'bundesliga': 'bundesliga', 'serie a': 'serie a'
+                }
+                
+                # Normalizuj upit sa aliasima
+                normalized_query = text_lc
+                for alias, canonical in alias_map.items():
+                    if alias in normalized_query:
+                        normalized_query = normalized_query.replace(alias, canonical)
+                
                 sports_keywords = [
-                    'kvote', 'koeficij', 'fudbal', 'utakmic', 'premier league', 'epl', 'la liga', 'laliga',
+                    'sport', 'fudbal', 'fudbals', 'utakmica', 'meč', 'rezultat', 'liga', 'tim', 'klub', 
+                    'arsenal', 'manchester', 'zvezda', 'partizan', 'premier', 'champions',
+                    # DODAJ ALIAS-E:
+                    'ars', 'man city', 'man utd', 'pl', 'prem', 'ls', 'ucl', 'epl', 'laliga', 'bundesliga', 'serie a',
+                    'kvote', 'koeficij', 'fudbal', 'utakmic', 'premier league', 'la liga', 'laliga',
                     'bundesliga', 'serie a', 'serija a', 'ligue 1', 'ucl', 'liga sampiona', 'superliga', 'srbija'
                 ]
-                is_sport = any(k in text_lc for k in sports_keywords) or ('sofascore' in text_lc)
+                is_sport = any(k in normalized_query for k in sports_keywords) or ('sofascore' in normalized_query)
+                
                 if is_sport:
                     from . import sofascore
                     key_map = {
@@ -967,17 +992,17 @@ class DeepSeekAPI(View):
                     }
                     chosen_key = None
                     for kw, val in key_map.items():
-                        if kw in text_lc:
+                        if kw in normalized_query:
                             chosen_key = val
                             break
 
                     # Detect potential team names (simple token heuristic)
                     stop_words = {'kvote','koeficij','danas','sutra','sledeci','sledećih','naredni','dan','liga','utakmica','rezultat','rezultati','sofascore'}
-                    tokens = re.findall(r"[a-zA-ZčćšđžČĆŠĐŽ]+", text_lc)
+                    tokens = re.findall(r"[a-zA-ZčćšđžČĆŠĐŽ]+", normalized_query)
                     team_candidates = [t for t in tokens if len(t) >= 4 and t not in stop_words and t not in key_map.keys()]
 
                     hours_val = 82
-                    if any(w in text_lc for w in ['sutra', 'sledeci', 'sledećih 7', 'naredni dan']):
+                    if any(w in normalized_query for w in ['sutra', 'sledeci', 'sledećih 7', 'naredni dan']):
                         hours_val = None  # treat as all (7 days in sofascore helper)
 
                     # 2-minute cache key (include team hint)
@@ -991,6 +1016,19 @@ class DeepSeekAPI(View):
                             sofa = sofascore.fetch_competition(chosen_key, hours=hours_val, debug=False)
                         else:
                             sofa = sofascore.fetch_quick(hours=hours_val, keys=['epl','laliga','bundesliga','seriea','ligue1','ucl','serbia'], debug=False)
+                        
+                        # === DODAJ FALLBACK ===
+                        if not sofa or not sofa.get('events'):
+                            try:
+                                from .nesako_chatbot import NESAKOChatbot
+                                chatbot = NESAKOChatbot()
+                                web_results = chatbot._simple_web_search(user_input)
+                                fallback_response = f"🌐 Web pretraga (fallback) za: {user_input}\n\n{web_results}"
+                                return JsonResponse({'response': fallback_response, 'status': 'ok', 'mode': 'sports'})
+                            except Exception as e:
+                                sofa = {'events': []}
+                        # === KRAJ FALLBACK ===
+                        
                         try:
                             self._sports_cache[cache_key] = {'ts': now_ts, 'data': sofa}
                         except Exception:
@@ -1016,9 +1054,12 @@ class DeepSeekAPI(View):
 
                     if items:
                         lines = []
-                        header = 'Rezultati (SofaScore kao izvor' + (', Fudbal91 kvote' if any('odds' in i and i['odds'] for i in items) else '') + f'){odds_note}:'
-                        lines.append(header)
-                        for it in items[:10]:
+                        header = 'Rezultati (SofaScore kao izvor' + (', Fudbal91 kvote' if any('odds' in i and i['odds'] for i in items) else '') + f'){odds_note}'
+                        if cached:  # Dodaj (keširano) ako je keširano
+                            header += ' (keširano)'
+                        header += ':'
+
+                        for it in items[:15]:  # Proširi na 15 stavki
                             league = it.get('league','')
                             match = it.get('match','')
                             ko = it.get('kickoff','')
@@ -1032,7 +1073,7 @@ class DeepSeekAPI(View):
                                         basic.append(f"{k}:{v}")
                                 oddstxt = (' | ' + ' '.join(basic)) if basic else ''
                             lines.append(f"- {league} — {match} — {ko}{oddstxt}")
-                        resp_text = "\n".join(lines)
+                        resp_text = header + "\n" + "\n".join(lines)
                         self.memory.save_conversation(session_id, user_input, resp_text)
                         # Persistent learning from this exchange
                         try:
@@ -2880,27 +2921,21 @@ Odgovori direktno i korisno na osnovu analize slika."""
                         'note': 'Fallback response used due to API error'
                     })
                     
-            except Exception as api_error:
-                # Fallback response when API call fails completely
-                fallback_response = self.generate_fallback_image_response(processed_images, user_instruction)
-                
+            except Exception as e:
+                print(f"Image upload error: {e}")
                 return JsonResponse({
-                    'response': fallback_response,
-                    'status': 'success',
-                    'timestamp': current_time.isoformat(),
-                    'mode': 'image_analysis_fallback',
-                    'images_processed': len(processed_images),
-                    'image_data': processed_images,
-                    'tools_used': True,
-                    'note': 'Fallback response used due to API connection error'
-                })
-                
+                    'error': f'Greška pri upload-u: {str(e)}',
+                    'status': 'error',
+                    'response': 'Greška pri obradi upload-ovanih slika.'
+                }, status=500)
+
         except Exception as e:
-            print(f"Image upload error: {e}")
+            # Catch-all for outer try block
+            print(f"Image upload outer error: {e}")
             return JsonResponse({
-                'error': f'Greška pri upload-u: {str(e)}',
+                'error': f'Neočekivana greška pri obradi slika: {str(e)}',
                 'status': 'error',
-                'response': 'Greška pri obradi upload-ovanih slika.'
+                'response': 'Došlo je do neočekivane greške pri obradi upload-ovanih slika.'
             }, status=500)
 
 
