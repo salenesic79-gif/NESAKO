@@ -790,6 +790,48 @@ class DeepSeekAPI(View):
             # Initialize serp_snippets to avoid reference errors
             serp_snippets = []
             
+            # GitHub sync detection and execution
+            github_sync_detected = any(word in user_input.lower() for word in [
+                'prebaci na github', 'github sync', 'sačuvaj na github', 
+                'push na github', 'commit i push', 'git commit i push',
+                'sinhronizuj sa github', 'upload na github'
+            ])
+            
+            if github_sync_detected:
+                # Extract GitHub URL from input
+                github_url_pattern = r'https?://github\.com/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+'
+                github_matches = re.findall(github_url_pattern, user_input)
+                
+                if github_matches:
+                    github_url = github_matches[0]
+                    commit_message = "Auto-commit by NESAKO AI"
+                    
+                    # Extract custom commit message if provided
+                    message_patterns = [
+                        r'"([^"]+)"',
+                        r"'([^']+)'",
+                        r'sa porukom\s+(.+)',
+                        r'commit message\s+(.+)'
+                    ]
+                    
+                    for pattern in message_patterns:
+                        match = re.search(pattern, user_input)
+                        if match:
+                            commit_message = match.group(1)
+                            break
+                    
+                    sync_result = self.sync_to_github(github_url, commit_message)
+                    
+                    if sync_result['success']:
+                        tools_output += f"\n🚀 **GITHUB SINHRONIZACIJA:**\n{sync_result['message']}\n"
+                        if sync_result.get('changes', True):
+                            tools_output += f"📁 Repo: {sync_result['repo_url']}\n"
+                            tools_output += f"💬 Commit: {sync_result['commit_message']}\n"
+                    else:
+                        tools_output += f"\n❌ **GITHUB GREŠKA:**\n{sync_result['message']}\n"
+                else:
+                    tools_output += "\n❌ **GITHUB SINHRONIZACIJA:**\nNije pronađen GitHub URL u zahtevu.\nPrimer: 'prebaci na github https://github.com/username/repo'"
+
             # Enhanced web search with AI query reformulation
             if any(word in user_input.lower() for word in ['pretraži', 'pronađi', 'informacije o', 'šta je', 'rezultat', 'utakmica', 'danas', 'sada', 'istraži', 'web']):
                 try:
@@ -1825,6 +1867,73 @@ Da li želite da nastavite? (potrebna je eksplicitna potvrda)"""
                 
         except Exception as e:
             return f"Greška pri rollback operaciji: {str(e)}"
+
+    def sync_to_github(self, repo_url: str, commit_message: str = "Auto-commit by NESAKO AI") -> Dict:
+        """Sinhronizuje lokalne izmene sa GitHub repozitorijumom"""
+        try:
+            import subprocess
+            import os
+            
+            # Parse repo info
+            parts = repo_url.replace('https://github.com/', '').split('/')
+            if len(parts) < 2:
+                return {'success': False, 'message': 'Nevalidan GitHub URL'}
+            
+            owner, repo_name = parts[0], parts[1].replace('.git', '')
+            
+            # Check if we're in a git repository
+            result = subprocess.run(['git', 'status'], capture_output=True, text=True)
+            if result.returncode != 0:
+                return {'success': False, 'message': 'Nije Git repozitorijum. Pokrenite "git init" prvo.'}
+            
+            # Check remote
+            remote_result = subprocess.run(['git', 'remote', 'get-url', 'origin'], 
+                                         capture_output=True, text=True)
+            
+            if remote_result.returncode != 0:
+                # Add remote
+                add_remote = subprocess.run(['git', 'remote', 'add', 'origin', repo_url],
+                                          capture_output=True, text=True)
+                if add_remote.returncode != 0:
+                    return {'success': False, 'message': f'Greška pri dodavanju remote: {add_remote.stderr}'}
+            
+            # Add all changes
+            add_result = subprocess.run(['git', 'add', '.'], capture_output=True, text=True)
+            if add_result.returncode != 0:
+                return {'success': False, 'message': f'Greška pri dodavanju fajlova: {add_result.stderr}'}
+            
+            # Commit changes
+            commit_result = subprocess.run(['git', 'commit', '-m', commit_message],
+                                         capture_output=True, text=True)
+            
+            # If commit fails because no changes, try different message
+            if commit_result.returncode != 0 and "nothing to commit" in commit_result.stderr.lower():
+                return {'success': True, 'message': 'Nema promena za commit', 'changes': False}
+            
+            if commit_result.returncode != 0:
+                return {'success': False, 'message': f'Greška pri commit: {commit_result.stderr}'}
+            
+            # Push to GitHub
+            push_result = subprocess.run(['git', 'push', '-u', 'origin', 'main'],
+                                       capture_output=True, text=True)
+            
+            # If main branch doesn't exist, try master
+            if push_result.returncode != 0 and "main" in push_result.stderr:
+                push_result = subprocess.run(['git', 'push', '-u', 'origin', 'master'],
+                                           capture_output=True, text=True)
+            
+            if push_result.returncode != 0:
+                return {'success': False, 'message': f'Greška pri push: {push_result.stderr}'}
+            
+            return {
+                'success': True, 
+                'message': f'✅ Uspešno sinhronizovano sa GitHub!\nRepo: {repo_url}\nCommit: {commit_message}',
+                'repo_url': repo_url,
+                'commit_message': commit_message
+            }
+            
+        except Exception as e:
+            return {'success': False, 'message': f'Greška pri sinhronizaciji: {str(e)}'}
 
     def generate_enhanced_fallback_response(self, user_input, tools_output, additional_data):
         """Generate a comprehensive fallback response when AI services are unavailable"""

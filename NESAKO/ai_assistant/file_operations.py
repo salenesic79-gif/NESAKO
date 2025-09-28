@@ -397,6 +397,10 @@ class FileOperationsManager:
             ],
             'delete_file': [
                 'obriši fajl', 'delete file', 'remove file'
+            ],
+            'github_sync': [
+                'prebaci na github', 'github sync', 'sačuvaj na github',
+                'push na github', 'commit i push', 'git commit i push'
             ]
         }
         

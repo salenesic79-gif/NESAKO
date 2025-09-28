@@ -59,6 +59,8 @@ urlpatterns = [
     path('api/git-sync/', csrf_exempt(git_sync_view), name='git_sync'),
     # GitHub sync endpoint
     path('api/github-sync/', csrf_exempt(DeepSeekAPI.as_view()), name='github_sync'),
+    # GitHub sync endpoint
+    path('api/github-sync/', csrf_exempt(DeepSeekAPI.as_view()), name='github_sync'),
     # Session preferences endpoint
     path('api/preferences/', csrf_exempt(preferences_view), name='preferences'),
     # Lessons endpoints

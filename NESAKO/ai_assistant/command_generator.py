@@ -26,7 +26,15 @@ class CommandGenerator:
                 'remote': 'git remote add {name} {url}',
                 'tag': 'git tag {tag_name}',
                 'diff': 'git diff {file}',
-                'rollback': 'git reset --hard HEAD~{steps}'
+                'rollback': 'git reset --hard HEAD~{steps}',
+                'add_remote': 'git remote add {name} {url}',
+                'set_origin': 'git remote add origin {url}',
+                'push_initial': 'git push -u origin {branch}',
+                'check_remote': 'git remote -v',
+                'status_detailed': 'git status --porcelain',
+                'add_all': 'git add .',
+                'commit_initial': 'git commit -m "Initial commit"',
+                'push_force': 'git push --force-with-lease origin {branch}'
             },
             'npm': {
                 'init': 'npm init -y',
@@ -108,11 +116,16 @@ class CommandGenerator:
             'clone': ['clone', 'kloniraj', 'preuzmi repo'],
             'init': ['git init', 'inicijalizuj git', 'napravi git'],
             'commit': ['commit', 'commituj', 'sačuvaj izmene'],
-            'push': ['push', 'pošalji', 'upload'],
+            'push': ['push', 'pošalji', 'upload', 'github', 'prebaci na github'],
             'pull': ['pull', 'povuci', 'ažuriraj'],
             'status': ['status', 'stanje', 'šta je novo'],
             'add': ['add', 'dodaj', 'stage'],
-            'rollback': ['rollback', 'vrati', 'poništi', 'reset']
+            'rollback': ['rollback', 'vrati', 'poništi', 'reset'],
+            'add_remote': ['dodaj remote', 'setuj origin', 'poveži sa github'],
+            'push_initial': ['prvi push', 'inicijalni push', 'postavi na github'],
+            'check_remote': ['proveri remote', 'šta je origin'],
+            'add_all': ['dodaj sve', 'git add sve'],
+            'commit_initial': ['prvi commit', 'inicijalni commit']
         }
         
         # NPM/Node komande
@@ -228,6 +241,29 @@ class CommandGenerator:
                     params['steps'] = match.group(1)
                 else:
                     params['steps'] = '1'
+            
+            elif command == 'add_remote':
+                # Traži GitHub URL
+                url_pattern = r'https?://github\.com/[\w\-\.]+/[\w\-\.]+'
+                match = re.search(url_pattern, user_input)
+                if match:
+                    params['url'] = match.group()
+                    params['name'] = 'origin'
+            
+            elif command == 'push_initial':
+                params['branch'] = 'main'
+                # Traži branch name
+                branch_pattern = r'(?:branch|grana)\s+(\w+)'
+                match = re.search(branch_pattern, input_lower)
+                if match:
+                    params['branch'] = match.group(1)
+            
+            elif command == 'set_origin':
+                # Traži GitHub URL
+                url_pattern = r'https?://github\.com/[\w\-\.]+/[\w\-\.]+'
+                match = re.search(url_pattern, user_input)
+                if match:
+                    params['url'] = match.group()
         
         # NPM parametri
         elif command_type == 'npm':
