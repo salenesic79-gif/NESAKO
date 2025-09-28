@@ -1093,8 +1093,10 @@ Odgovori konkretno na: {user_input}"""
 
 # ============== PUBLIC JSON ENDPOINTS ==============
 from django.views.decorators.http import require_http_methods
-from django.http import FileResponse
+from django.http import FileResponse, JsonResponse
 from django.contrib.staticfiles import finders
+from .memory_manager import PersistentMemoryManager
+from .task_processor import task_processor
 
 @require_http_methods(["GET"])
 def lessons_view(request):
