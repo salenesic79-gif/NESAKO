@@ -1,6 +1,7 @@
 import json
 import os
 import requests
+import time
 import subprocess
 import tempfile
 import re
@@ -39,6 +40,8 @@ class DeepSeekAPI(View):
         self.file_operations = FileOperationsManager()
         # NESAKO Chatbot with ORM-backed memory and SerpAPI integration
         self.nesako = NESAKOChatbot()
+        # Simple in-memory cache for sports queries
+        self._sports_cache = {}
 
     # --- Safe stub: UI expects threat detection method ---
     def detect_critical_threats(self, text: str) -> list:
@@ -943,10 +946,22 @@ class DeepSeekAPI(View):
                     if any(w in text_lc for w in ['sutra', 'sledeci', 'sledećih 7', 'naredni dan']):
                         hours_val = None  # treat as all (7 days in sofascore helper)
 
-                    if chosen_key:
-                        sofa = sofascore.fetch_competition(chosen_key, hours=hours_val, debug=False)
+                    # 2-minute cache key
+                    cache_key = f"sports:{chosen_key or 'mix'}:{hours_val}"
+                    cached = self._sports_cache.get(cache_key)
+                    now_ts = time.time()
+                    if cached and (now_ts - cached.get('ts', 0) < 120):
+                        sofa = cached.get('data', {'items': []})
                     else:
-                        sofa = sofascore.fetch_quick(hours=hours_val, keys=['epl','laliga','bundesliga','seriea','ligue1','ucl','serbia'], debug=False)
+                        if chosen_key:
+                            sofa = sofascore.fetch_competition(chosen_key, hours=hours_val, debug=False)
+                        else:
+                            sofa = sofascore.fetch_quick(hours=hours_val, keys=['epl','laliga','bundesliga','seriea','ligue1','ucl','serbia'], debug=False)
+                        # store in cache
+                        try:
+                            self._sports_cache[cache_key] = {'ts': now_ts, 'data': sofa}
+                        except Exception:
+                            pass
 
                     items = sofa.get('items', []) if isinstance(sofa, dict) else []
 
