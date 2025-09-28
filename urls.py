@@ -11,6 +11,8 @@ from ai_assistant.views import (
     fudbal_competition,
     sofa_quick,
     sofa_competition,
+    tsdb_team,
+    tsdb_league,
     debug_routes,
     lessons_view,
     update_feedback,
@@ -55,6 +57,11 @@ urlpatterns = [
     path('api/sofa/quick/', csrf_exempt(sofa_quick)),
     path('api/sofa/competition', csrf_exempt(sofa_competition), name='sofa_competition'),
     path('api/sofa/competition/', csrf_exempt(sofa_competition)),
+    # TheSportsDB endpoints (public JSON, demo key by default)
+    path('api/tsdb/team', csrf_exempt(tsdb_team), name='tsdb_team'),
+    path('api/tsdb/team/', csrf_exempt(tsdb_team)),
+    path('api/tsdb/league', csrf_exempt(tsdb_league), name='tsdb_league'),
+    path('api/tsdb/league/', csrf_exempt(tsdb_league)),
     # Git sync endpoint
     path('api/git-sync/', csrf_exempt(git_sync_view), name='git_sync'),
     # Session preferences endpoint

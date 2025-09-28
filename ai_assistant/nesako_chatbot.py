@@ -3,7 +3,22 @@ import re
 import requests
 import json
 from typing import List, Optional, Dict
-from scipy.optimize import minimize
+
+# Optional heavy deps (SciPy/Numpy) – provide safe fallbacks if missing
+try:
+    from scipy.optimize import minimize  # type: ignore
+except Exception:  # pragma: no cover
+    def minimize(*args, **kwargs):  # type: ignore
+        class _R:
+            success = False
+            x = []
+        return _R()
+
+try:
+    import numpy as _np  # type: ignore
+except Exception:  # pragma: no cover
+    _np = None
+
 from .models import MemoryEntry, Conversation, LearningData
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
@@ -300,8 +315,8 @@ class NESAKOChatbot:
     def calculate_betting_combinations(self, matches: List[Dict[str, any]], budget: float) -> List[Dict[str, any]]:
         """Calculate optimal betting combinations using Kelly Criterion and portfolio optimization"""
         try:
-            import numpy as np
-            from scipy.optimize import minimize
+            # Optional: numpy/scipy – if not available, fallback logic will be used
+            np = _np
             
             combinations = []
             
@@ -381,6 +396,8 @@ class NESAKOChatbot:
             
             # Covariance matrix (simplified)
             n = len(outcomes)
+            if np is None:
+                raise RuntimeError('numpy_not_available')
             cov_matrix = np.eye(n) * 0.1  # Assume some correlation
             
             # Optimization function

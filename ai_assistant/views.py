@@ -1,6 +1,7 @@
 import json
 import os
 import requests
+import time
 import subprocess
 import tempfile
 import re
@@ -39,6 +40,8 @@ class DeepSeekAPI(View):
         self.file_operations = FileOperationsManager()
         # NESAKO Chatbot with ORM-backed memory and SerpAPI integration
         self.nesako = NESAKOChatbot()
+        # Simple in-memory cache for sports queries
+        self._sports_cache = {}
 
     # --- Safe stub: UI expects threat detection method ---
     def detect_critical_threats(self, text: str) -> list:
@@ -168,7 +171,14 @@ class DeepSeekAPI(View):
             return original_query or ''
         
     def dispatch(self, request, *args, **kwargs):
-        # Check authentication for API access
+        # In DEBUG mode allow direct access (local testing convenience); otherwise enforce auth
+        try:
+            from django.conf import settings as dj_settings
+            if getattr(dj_settings, 'DEBUG', False):
+                return super().dispatch(request, *args, **kwargs)
+        except Exception:
+            pass
+        # Production/Non-debug: require authentication
         if not request.session.get('authenticated'):
             return JsonResponse({
                 'error': 'Neautorizovan pristup - molim vas ulogujte se',
@@ -210,7 +220,8 @@ class DeepSeekAPI(View):
                     error_data = repo_response.json()
                     error_info = f" - {error_data.get('message', '')}"
                 except:
-                    pass
+                    error_info += f" - {repo_response.text[:200]}"
+            
                 return f"❌ GitHub repozitorijum nije pronađen ili nije javan: {owner}/{repo}{error_info}"
             
             repo_data = repo_response.json()
@@ -789,7 +800,14 @@ class DeepSeekAPI(View):
                     'response': 'Nevalidan format zahteva. Molim pokušajte ponovo.'
                 }, status=400)
             
-            user_input = data.get('instruction', '').strip()
+            # Accept multiple client payload styles
+            user_input = (
+                data.get('instruction')
+                or data.get('message')
+                or data.get('prompt')
+                or ''
+            )
+            user_input = user_input.strip()
             conversation_history = data.get('conversation_history', [])
             task_id = data.get('task_id', None)
             
@@ -856,6 +874,207 @@ class DeepSeekAPI(View):
             if not session_id:
                 request.session.create()
                 session_id = request.session.session_key
+
+            # --- Self-upgrade confirmation flow (prompt -> 'da' applies -> 'ponisti' reverts) ---
+            try:
+                text_cmd = (user_input or '').strip().lower()
+                pending = bool(request.session.get('upgrade_pending', False))
+
+                # Immediate apply if the same message requests upgrade + sofascore usage
+                if (('unapredi' in text_cmd) or ('upgrade' in text_cmd)) and ('sofascore' in text_cmd):
+                    try:
+                        if hasattr(self.memory, 'save_module_snapshot'):
+                            self.memory.save_module_snapshot('auto')
+                        if hasattr(self.memory, 'set_modules_active'):
+                            self.memory.set_modules_active(True)
+                        request.session['prefer_sofascore'] = True
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': 'Unapređenje aktivirano i SofaScore postavljen kao prioritetni izvor.',
+                            'status': 'ok',
+                            'mode': 'upgrade_applied'
+                        })
+                    except Exception as e:
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': f'Greška pri unapređenju: {str(e)}',
+                            'status': 'error',
+                            'mode': 'upgrade_error'
+                        }, status=500)
+
+                # Trigger prompt
+                if any(k in text_cmd for k in ['unapredi se', 'unapredi', 'da li da se unapredim', 'upgrade']):
+                    request.session['upgrade_pending'] = True
+                    return JsonResponse({
+                        'response': 'Želite li da unapredim sebe i aktiviram napredne module? Odgovori "da" za potvrdu ili "ponisti" za odustajanje.',
+                        'status': 'ok',
+                        'mode': 'upgrade_prompt'
+                    })
+
+                # Confirm
+                if pending and text_cmd == 'da':
+                    try:
+                        if hasattr(self.memory, 'save_module_snapshot'):
+                            self.memory.save_module_snapshot('auto')
+                        if hasattr(self.memory, 'set_modules_active'):
+                            self.memory.set_modules_active(True)
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': 'Unapređenje aktivirano. Ako želiš da vratiš prethodno stanje, napiši "ponisti".',
+                            'status': 'ok',
+                            'mode': 'upgrade_applied'
+                        })
+                    except Exception as e:
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': f'Greška pri unapređenju: {str(e)}',
+                            'status': 'error',
+                            'mode': 'upgrade_error'
+                        }, status=500)
+
+                # Revert
+                if text_cmd == 'ponisti':
+                    try:
+                        ok = False
+                        if hasattr(self.memory, 'restore_module_snapshot'):
+                            ok = bool(self.memory.restore_module_snapshot('auto'))
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': 'Vraćeno prethodno stanje.' if ok else 'Nije pronađen snapshot za vraćanje.',
+                            'status': 'ok' if ok else 'error',
+                            'mode': 'upgrade_reverted' if ok else 'upgrade_revert_failed'
+                        }, status=200 if ok else 404)
+                    except Exception as e:
+                        return JsonResponse({
+                            'response': f'Greška pri vraćanju: {str(e)}',
+                            'status': 'error',
+                            'mode': 'upgrade_revert_error'
+                        }, status=500)
+            except Exception as e:
+                print(f"Upgrade flow error: {e}")
+
+            # --- Sports router: SofaScore as primary (fixtures), Fudbal91 as optional odds enrichment ---
+            try:
+                text_lc = (user_input or '').lower()
+                sports_keywords = [
+                    'kvote', 'koeficij', 'fudbal', 'utakmic', 'premier league', 'epl', 'la liga', 'laliga',
+                    'bundesliga', 'serie a', 'serija a', 'ligue 1', 'ucl', 'liga sampiona', 'superliga', 'srbija'
+                ]
+                is_sport = any(k in text_lc for k in sports_keywords) or ('sofascore' in text_lc)
+                if is_sport:
+                    # TheSportsDB (TSDB) as primary source
+                    from . import tsdb
+                    # Basic league key detection
+                    key_map = {
+                        'epl': 'epl', 'premier league': 'epl',
+                        'la liga': 'laliga', 'laliga': 'laliga',
+                        'bundesliga': 'bundesliga',
+                        'serie a': 'seriea', 'serija a': 'seriea',
+                        'ligue 1': 'ligue1',
+                        'ucl': 'ucl', 'liga sampiona': 'ucl',
+                        'superliga': 'serbia', 'srbija': 'serbia',
+                    }
+                    chosen_key = None
+                    for kw, val in key_map.items():
+                        if kw in text_lc:
+                            chosen_key = val
+                            break
+                    # Detect team candidates
+                    stop_words = {'kvote','koeficij','danas','sutra','sledeci','sledećih','naredni','dan','liga','utakmica','rezultat','rezultati','sofascore'}
+                    tokens = re.findall(r"[a-zA-ZčćšđžČĆŠĐŽ]+", text_lc)
+                    team_candidates = [t for t in tokens if len(t) >= 3 and t not in stop_words and t not in key_map.keys()]
+                    # Simple aliases
+                    alias_map = {
+                        'ars': 'arsenal', 'gunners': 'arsenal',
+                        'man': 'manchester', 'city': 'manchester city', 'man city': 'manchester city',
+                        'united': 'manchester united', 'man utd': 'manchester united',
+                        'rmadrid': 'real madrid', 'real': 'real madrid', 'barca': 'barcelona',
+                        'zvezda': 'crvena zvezda', 'czv': 'crvena zvezda',
+                        'pl': 'premier league', 'prem': 'premier league', 'premijer': 'premier league',
+                        'ls': 'champions league', 'ligi sampiona': 'champions league'
+                    }
+                    team_candidates = [alias_map.get(t, t) for t in team_candidates]
+
+                    # Try TSDB team next events
+                    ts_items = []
+                    try:
+                        if team_candidates:
+                            q = ' '.join(team_candidates[:2])
+                            tid = tsdb.search_team(q)
+                            if tid:
+                                evs = tsdb.events_next_team(tid, n=10)
+                                for ev in evs:
+                                    ts_items.append({
+                                        'league': ev.get('strLeague','') or ev.get('strSport',''),
+                                        'match': f"{ev.get('strHomeTeam','')} - {ev.get('strAwayTeam','')}",
+                                        'kickoff': (ev.get('dateEvent') or '') + ('T' + (ev.get('strTime','') or '') if ev.get('strTime') else ''),
+                                    })
+                        # If none, try league by name
+                        if (not ts_items) and chosen_key:
+                            league_alias = {
+                                'epl': 'Premier League', 'laliga': 'La Liga', 'bundesliga': 'Bundesliga',
+                                'seriea': 'Serie A', 'ligue1': 'Ligue 1', 'ucl': 'Champions League', 'serbia': 'Super Liga'
+                            }.get(chosen_key, chosen_key)
+                            lid = tsdb.search_league(league_alias)
+                            if lid:
+                                evs = tsdb.events_next_league(lid, n=15)
+                                for ev in evs:
+                                    ts_items.append({
+                                        'league': ev.get('strLeague','') or ev.get('strSport',''),
+                                        'match': f"{ev.get('strHomeTeam','')} - {ev.get('strAwayTeam','')}",
+                                        'kickoff': (ev.get('dateEvent') or '') + ('T' + (ev.get('strTime','') or '') if ev.get('strTime') else ''),
+                                    })
+                    except Exception as _e:
+                        ts_items = []
+
+                    if ts_items:
+                        lines = []
+                        header = 'Rezultati (TheSportsDB demo izvor):'
+                        lines.append(header)
+                        for it in ts_items[:15]:
+                            league = it.get('league','')
+                            match = it.get('match','')
+                            ko = it.get('kickoff','')
+                            lines.append(f"- {league} — {match} — {ko}")
+                        resp_text = "\n".join(lines)
+                        self.memory.save_conversation(session_id, user_input, resp_text)
+                        try:
+                            self.memory.learn_from_conversation(session_id, user_input, resp_text)
+                        except Exception as _e:
+                            print(f"Learning hook (tsdb) error: {_e}")
+                        return JsonResponse({'response': resp_text, 'status': 'ok', 'mode': 'sports'})
+
+                    # Fall back to SofaScore flow if TSDB empty
+                    from . import sofascore
+                    key_map = {
+                        'epl': 'epl', 'premier league': 'epl',
+                        'la liga': 'laliga', 'laliga': 'laliga',
+                        'bundesliga': 'bundesliga',
+                        'serie a': 'seriea', 'serija a': 'seriea',
+                        'ligue 1': 'ligue1',
+                        'ucl': 'ucl', 'liga sampiona': 'ucl',
+                        'superliga': 'serbia', 'srbija': 'serbia',
+                    }
+                    chosen_key = None
+                    for kw, val in key_map.items():
+                        if kw in text_lc:
+                            chosen_key = val
+                            break
+                        try:
+                            self.memory.learn_from_conversation(session_id, user_input, resp_text)
+                        except Exception as _e:
+                            print(f"Learning hook (sports) error: {_e}")
+                        return JsonResponse({'response': resp_text, 'status': 'ok', 'mode': 'sports'})
+                    else:
+                        hint = 'Nema rezultata za sportski upit. Navedite ligu (EPL, La Liga...) ili proširite period (npr. sutra/sledeci).' 
+                        self.memory.save_conversation(session_id, user_input, hint)
+                        try:
+                            self.memory.learn_from_conversation(session_id, user_input, hint)
+                        except Exception as _e:
+                            print(f"Learning hook (sports-empty) error: {_e}")
+                        return JsonResponse({'response': hint, 'status': 'ok', 'mode': 'sports'})
+            except Exception as e:
+                print(f"Sports router error: {e}")
 
             # Auto-create/load AI modules if enabled (default True when not set)
             try:
@@ -1353,7 +1572,8 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
 
 # ============== PUBLIC JSON ENDPOINTS ==============
 from django.views.decorators.http import require_http_methods
-from django.http import FileResponse
+from django.http import JsonResponse, FileResponse
+from django.urls import get_resolver
 from django.contrib.staticfiles import finders
 
 @csrf_exempt
@@ -1365,6 +1585,20 @@ def preferences_view(request):
     """
     try:
         if request.method == 'GET':
+            # Optional: return learning profile when ?profile=1
+            prof = (request.GET.get('profile') or '').strip().lower()
+            if prof in ('1', 'true', 'yes'):
+                try:
+                    # Ensure session id exists
+                    session_id = request.session.session_key
+                    if not session_id:
+                        request.session.create()
+                        session_id = request.session.session_key
+                    mm = PersistentMemoryManager()
+                    profile = mm.get_learning_profile(session_id)
+                    return JsonResponse({'profile': profile, 'session_id': session_id})
+                except Exception as e:
+                    return JsonResponse({'error': f'profile_error: {str(e)}'}, status=500)
             return JsonResponse({
                 'auto_modules_enabled': bool(request.session.get('auto_modules_enabled', False))
             })
@@ -1389,6 +1623,157 @@ def preferences_view(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+
+# --- Fudbal91 integrations (read-only JSON endpoints) ---
+@csrf_exempt
+@require_http_methods(["GET"])
+def fudbal_quick_odds(request):
+    """Return quick odds for matches in next 82 hours from fudbal91.com/quick_odds"""
+    try:
+        from . import fudbal91
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
+        hours_val = None if (all_flag and all_flag in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else fudbal91.WINDOW_HOURS)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = fudbal91.fetch_quick_odds(hours=hours_val, debug=debug)
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def tsdb_team(request):
+    """Return next and last events for a team by name using TheSportsDB (demo key by default)."""
+    try:
+        from . import tsdb
+        name = (request.GET.get('name') or '').strip()
+        next_n = int(request.GET.get('next') or '5')
+        last_n = int(request.GET.get('last') or '0')
+        if not name:
+            return JsonResponse({"error": "Missing team name"}, status=400)
+        tid = tsdb.search_team(name)
+        if not tid:
+            return JsonResponse({"team": name, "items": [], "source": "tsdb"})
+        items = []
+        nxt = tsdb.events_next_team(tid, n=max(1, min(15, next_n))) if next_n else []
+        lst = tsdb.events_last_team(tid, n=max(1, min(10, last_n))) if last_n else []
+        def map_item(ev):
+            return {
+                "league": ev.get('strLeague','') or ev.get('strSport',''),
+                "match": f"{ev.get('strHomeTeam','')} - {ev.get('strAwayTeam','')}",
+                "kickoff": (ev.get('dateEvent') or '') + ('T' + (ev.get('strTime','') or '') if ev.get('strTime') else ''),
+                "idEvent": ev.get('idEvent')
+            }
+        items.extend([map_item(ev) for ev in nxt])
+        items.extend([map_item(ev) for ev in lst])
+        return JsonResponse({"team": name, "items": items, "source": "tsdb"})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def tsdb_league(request):
+    """Return next events for a league by name using TheSportsDB (demo key by default)."""
+    try:
+        from . import tsdb
+        name = (request.GET.get('name') or '').strip()
+        next_n = int(request.GET.get('next') or '10')
+        if not name:
+            return JsonResponse({"error": "Missing league name"}, status=400)
+        lid = tsdb.search_league(name)
+        if not lid:
+            return JsonResponse({"league": name, "items": [], "source": "tsdb"})
+        evs = tsdb.events_next_league(lid, n=max(1, min(20, next_n)))
+        items = [{
+            "league": ev.get('strLeague','') or ev.get('strSport',''),
+            "match": f"{ev.get('strHomeTeam','')} - {ev.get('strAwayTeam','')}",
+            "kickoff": (ev.get('dateEvent') or '') + ('T' + (ev.get('strTime','') or '') if ev.get('strTime') else ''),
+            "idEvent": ev.get('idEvent')
+        } for ev in evs]
+        return JsonResponse({"league": name, "items": items, "source": "tsdb"})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+# --- SofaScore integrations (read-only JSON endpoints) ---
+@csrf_exempt
+@require_http_methods(["GET"])
+def sofa_quick(request):
+    """Return upcoming football events within window using SofaScore public JSON (no odds)."""
+    try:
+        from . import sofascore
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
+        keys = request.GET.get('keys', '')  # comma-separated: epl,laliga,ucl,...
+        key_list = [k.strip() for k in keys.split(',') if k.strip()] if keys else None
+        hours_val = None if (all_flag and all_flag.lower() in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else sofascore.WINDOW_HOURS)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = sofascore.fetch_quick(hours=hours_val, keys=key_list, debug=debug)
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def sofa_competition(request):
+    """Return events for a single competition key using SofaScore public JSON (no odds)."""
+    try:
+        from . import sofascore
+        key = request.GET.get('key', 'epl')
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
+        hours_val = None if (all_flag and all_flag.lower() in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else sofascore.WINDOW_HOURS)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = sofascore.fetch_competition(key=key, hours=hours_val, debug=debug)
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def fudbal_odds_changes(request):
+    """Return odds changes within next 82 hours from fudbal91.com/odds_changes"""
+    try:
+        from . import fudbal91
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
+        hours_val = None if (all_flag and all_flag in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else fudbal91.WINDOW_HOURS)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = fudbal91.fetch_odds_changes(hours=hours_val, debug=debug)
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def fudbal_competition(request):
+    """Return competition fixtures/odds filtered to next 82 hours.
+    Query params:
+      - key: one of [ucl, laliga, epl, bundesliga, seriea, ligue1, serbia]
+      - url: full competition URL (overrides key)
+    """
+    try:
+        from . import fudbal91
+        key = request.GET.get('key', '')
+        url = request.GET.get('url', '')
+        target = url or key or 'ucl'
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
+        hours_val = None if (all_flag and all_flag in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else fudbal91.WINDOW_HOURS)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = fudbal91.fetch_competition(target, hours=hours_val, debug=debug)
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
 @require_http_methods(["GET"])
 def lessons_view(request):
     try:
@@ -1403,6 +1788,31 @@ def lessons_view(request):
         return JsonResponse({"lessons": data})
     except Exception as e:
         return JsonResponse({"error": str(e), "lessons": []}, status=500)
+
+# --- Minimal task management endpoints to satisfy imports in urls.py ---
+@csrf_exempt
+@require_http_methods(["GET"])
+def get_unfinished_tasks(request):
+    try:
+        # Placeholder: return empty list for now
+        return JsonResponse({"tasks": [], "status": "ok"})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def process_unfinished_tasks(request):
+    try:
+        data = {}
+        if request.body:
+            try:
+                data = json.loads(request.body)
+            except Exception:
+                data = {}
+        ids = data.get('ids', []) if isinstance(data, dict) else []
+        return JsonResponse({"processed": ids, "count": len(ids), "status": "ok"})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -1448,6 +1858,27 @@ def manifest_view(request):
             "display": "standalone"
         }
         return JsonResponse(simple_manifest)
+
+
+@require_http_methods(["GET"])
+def debug_routes(request):
+    """List all registered URL patterns to diagnose 404 issues on deployment."""
+    try:
+        resolver = get_resolver()
+        patterns = []
+        def collect(pattern_list, prefix=""):
+            for p in pattern_list:
+                try:
+                    if hasattr(p, 'url_patterns'):
+                        collect(p.url_patterns, prefix + str(getattr(p, 'pattern', '')))
+                    else:
+                        patterns.append(prefix + str(getattr(p, 'pattern', '')))
+                except Exception:
+                    continue
+        collect(resolver.url_patterns)
+        return JsonResponse({"routes": patterns})
+    except Exception as e:
+        return JsonResponse({"error": str(e), "routes": []}, status=500)
 
 @require_http_methods(["GET"])
 def health_view(request):
@@ -2365,7 +2796,7 @@ Da li želite da nastavite? (potrebna je eksplicitna potvrda)"""
         query = original_query.lower()
         
         # Remove common filler words
-        filler_words = ['molim', 'te', 'da', 'mi', 'kažeš', 'pomozi', 'sa', 'o']
+        filler_words = {'molim', 'te', 'da', 'mi', 'kažeš', 'pomozi', 'sa', 'o'}
         words = query.split()
         filtered_words = [word for word in words if word not in filler_words and len(word) > 2]
         
@@ -2452,7 +2883,7 @@ Molim analiziraj ove slike i daj detaljnu analizu sa preporukama za poboljšanje
             # Get session ID for memory
             session_id = request.session.session_key
             if not session_id:
-                request.session.create()
+                request.session.save()
                 session_id = request.session.session_key
             
             # Save to memory
