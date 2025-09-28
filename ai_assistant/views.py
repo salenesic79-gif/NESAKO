@@ -981,6 +981,7 @@ class DeepSeekAPI(View):
                 
                 if is_sport:
                     from . import sofascore
+                    from . import tsdb  # TSDB as primary source
                     key_map = {
                         'epl': 'epl', 'premier league': 'epl',
                         'la liga': 'laliga', 'laliga': 'laliga',
@@ -1004,6 +1005,57 @@ class DeepSeekAPI(View):
                     hours_val = 82
                     if any(w in normalized_query for w in ['sutra', 'sledeci', 'sledećih 7', 'naredni dan']):
                         hours_val = None  # treat as all (7 days in sofascore helper)
+
+                    # Try TSDB (team next events, else league next events)
+                    try:
+                        ts_items = []
+                        # Try by team if any candidates
+                        if team_candidates:
+                            team_q = ' '.join(team_candidates[:2])
+                            tid = tsdb.search_team(team_q)
+                            if tid:
+                                evs = tsdb.events_next_team(tid, n=10)
+                                for ev in evs:
+                                    ts_items.append({
+                                        'league': ev.get('strLeague','') or ev.get('strSport',''),
+                                        'match': f"{ev.get('strHomeTeam','')} - {ev.get('strAwayTeam','')}",
+                                        'kickoff': (ev.get('dateEvent') or '') + ('T' + (ev.get('strTime','') or '') if ev.get('strTime') else ''),
+                                    })
+                        # If still empty, try league mapping
+                        if (not ts_items) and chosen_key:
+                            league_alias = {
+                                'epl': 'Premier League', 'laliga': 'La Liga', 'bundesliga': 'Bundesliga',
+                                'seriea': 'Serie A', 'ligue1': 'Ligue 1', 'ucl': 'Champions League', 'serbia': 'Super Liga'
+                            }.get(chosen_key, chosen_key)
+                            lid = tsdb.search_league(league_alias)
+                            if lid:
+                                evs = tsdb.events_next_league(lid, n=15)
+                                for ev in evs:
+                                    ts_items.append({
+                                        'league': ev.get('strLeague','') or ev.get('strSport',''),
+                                        'match': f"{ev.get('strHomeTeam','')} - {ev.get('strAwayTeam','')}",
+                                        'kickoff': (ev.get('dateEvent') or '') + ('T' + (ev.get('strTime','') or '') if ev.get('strTime') else ''),
+                                    })
+                    except Exception:
+                        ts_items = []
+
+                    if ts_items:
+                        # Format immediate TSDB response and return
+                        lines = []
+                        header = 'Rezultati (TSDB):'
+                        lines.append(header)
+                        for it in ts_items[:15]:
+                            league = it.get('league','')
+                            match = it.get('match','')
+                            ko = it.get('kickoff','')
+                            lines.append(f"- {league} — {match} — {ko}")
+                        resp_text = "\n".join(lines)
+                        self.memory.save_conversation(session_id, user_input, resp_text)
+                        try:
+                            self.memory.learn_from_conversation(session_id, user_input, resp_text)
+                        except Exception as _e:
+                            print(f"Learning hook (tsdb) error: {_e}")
+                        return JsonResponse({'response': resp_text, 'status': 'ok', 'mode': 'sports'})
 
                     # 2-minute cache key (include team hint)
                     cache_key = f"sports:{chosen_key or 'mix'}:{hours_val}:{','.join(team_candidates[:2]) if team_candidates else ''}"
