@@ -1034,10 +1034,19 @@ class DeepSeekAPI(View):
                             lines.append(f"- {league} — {match} — {ko}{oddstxt}")
                         resp_text = "\n".join(lines)
                         self.memory.save_conversation(session_id, user_input, resp_text)
+                        # Persistent learning from this exchange
+                        try:
+                            self.memory.learn_from_conversation(session_id, user_input, resp_text)
+                        except Exception as _e:
+                            print(f"Learning hook (sports) error: {_e}")
                         return JsonResponse({'response': resp_text, 'status': 'ok', 'mode': 'sports'})
                     else:
                         hint = 'Nema rezultata za sportski upit. Navedite ligu (EPL, La Liga...) ili proširite period (npr. sutra/sledeci).' 
                         self.memory.save_conversation(session_id, user_input, hint)
+                        try:
+                            self.memory.learn_from_conversation(session_id, user_input, hint)
+                        except Exception as _e:
+                            print(f"Learning hook (sports-empty) error: {_e}")
                         return JsonResponse({'response': hint, 'status': 'ok', 'mode': 'sports'})
             except Exception as e:
                 print(f"Sports router error: {e}")

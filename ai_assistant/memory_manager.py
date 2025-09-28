@@ -319,6 +319,29 @@ class PersistentMemoryManager:
                 return []
         return []
     
+    def set_modules_active(self, active: bool = True) -> bool:
+        """Aktivira/deaktivira sve module (ORM preko MemoryEntry sa key 'module:*').
+        Na sqlite (dev) metoda je no-op i vraća True.
+        """
+        if not self.use_sqlite:
+            try:
+                from django.apps import apps
+                MemoryEntry = apps.get_model('ai_assistant', 'MemoryEntry')
+                entries = MemoryEntry.objects.filter(key__startswith='module:')
+                for e in entries:
+                    try:
+                        payload = json.loads(e.value or '{}')
+                        payload['is_active'] = bool(active)
+                        e.value = json.dumps(payload)
+                        e.save(update_fields=['value'])
+                    except Exception:
+                        continue
+                return True
+            except Exception as e:
+                print(f"ORM: Error toggling modules active state: {e}")
+                return False
+        return True
+    
     # Sledeće metode nisu kritične za rad sistema na Railway i ostaju no-op u ORM modu
     def save_task(self, task_id: str, description: str, status: str = 'pending') -> bool:
         if not self.use_sqlite:
@@ -458,3 +481,66 @@ class PersistentMemoryManager:
         except Exception as e:
             print(f"Error getting memory stats: {e}")
             return {}
+
+    # --- New: Module snapshot helpers used by upgrade flow ---
+    def save_module_snapshot(self, snapshot_key: str = 'auto', payload: Optional[Dict] = None) -> bool:
+        """Sačuvaj snapshot stanja modula. U ORM modu koristi MemoryEntry, u sqlite snimi kao learning kategoriju.
+        payload može sadržati dodatne informacije; ako nije zadan, upišemo samo timestamp.
+        """
+        try:
+            data = payload or {'saved_at': datetime.utcnow().isoformat()}
+            key_name = f"module_snapshot:{snapshot_key}"
+            if not self.use_sqlite:
+                from django.apps import apps
+                MemoryEntry = apps.get_model('ai_assistant', 'MemoryEntry')
+                value = json.dumps(data)
+                MemoryEntry.objects.update_or_create(key=key_name, defaults={'value': value})
+                return True
+            # sqlite fallback: snimi kao user_learning sa fiksnim session_id 'global'
+            self.save_learning_data('global', key_name, data, confidence=1.0)
+            return True
+        except Exception as e:
+            print(f"Error saving module snapshot: {e}")
+            return False
+
+    def restore_module_snapshot(self, snapshot_key: str = 'auto') -> bool:
+        """Vrati snapshot ako postoji (indikativno). U ORM modu čita MemoryEntry; u sqlite iz user_learning.
+        Napomena: Ovde ne vraćamo kod modula već samo signal da snapshot postoji.
+        """
+        try:
+            key_name = f"module_snapshot:{snapshot_key}"
+            if not self.use_sqlite:
+                from django.apps import apps
+                MemoryEntry = apps.get_model('ai_assistant', 'MemoryEntry')
+                obj = MemoryEntry.objects.filter(key=key_name).first()
+                return bool(obj)
+            # sqlite fallback: pročitaj profil i proveri da li postoji zapis
+            profile = self.get_learning_profile('global')
+            return key_name in profile
+        except Exception as e:
+            print(f"Error restoring module snapshot: {e}")
+            return False
+
+    # --- New: Simple conversation-driven learning ---
+    def learn_from_conversation(self, session_id: str, user_message: str, ai_response: str = "") -> bool:
+        """Lightweight samoučenje iz teksta: detekcija preferenci i tema.
+        - Ako korisnik pominje 'sofascore', postavi preferencu prefer_sofascore=True
+        - Sačuvaj poslednje teme (naivna ekstrakcija ključnih reči)
+        """
+        try:
+            if not session_id:
+                session_id = 'default'
+            text = (user_message or '').lower()
+            # Preferenca izvora za sport
+            if 'sofascore' in text:
+                self.save_learning_data(session_id, 'sports_source', {'prefer_sofascore': True}, confidence=0.85)
+            # Naivna ekstrakcija tema (kljucne reci duže od 3)
+            import re
+            tokens = re.findall(r"[a-zA-ZčćšđžČĆŠĐŽ0-9]+", (user_message or ''))
+            topics = [t for t in tokens if len(t) > 3][:10]
+            if topics:
+                self.save_learning_data(session_id, 'last_topics', topics, confidence=0.6)
+            return True
+        except Exception as e:
+            print(f"Learning error: {e}")
+            return False
