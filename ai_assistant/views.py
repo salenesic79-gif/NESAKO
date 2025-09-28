@@ -793,7 +793,14 @@ class DeepSeekAPI(View):
                     'response': 'Nevalidan format zahteva. Molim pokušajte ponovo.'
                 }, status=400)
             
-            user_input = data.get('instruction', '').strip()
+            # Accept multiple client payload styles
+            user_input = (
+                data.get('instruction')
+                or data.get('message')
+                or data.get('prompt')
+                or ''
+            )
+            user_input = user_input.strip()
             conversation_history = data.get('conversation_history', [])
             task_id = data.get('task_id', None)
             
@@ -866,6 +873,28 @@ class DeepSeekAPI(View):
                 text_cmd = (user_input or '').strip().lower()
                 pending = bool(request.session.get('upgrade_pending', False))
 
+                # Immediate apply if the same message requests upgrade + sofascore usage
+                if (('unapredi' in text_cmd) or ('upgrade' in text_cmd)) and ('sofascore' in text_cmd):
+                    try:
+                        if hasattr(self.memory, 'save_module_snapshot'):
+                            self.memory.save_module_snapshot('auto')
+                        if hasattr(self.memory, 'set_modules_active'):
+                            self.memory.set_modules_active(True)
+                        request.session['prefer_sofascore'] = True
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': 'Unapređenje aktivirano i SofaScore postavljen kao prioritetni izvor.',
+                            'status': 'ok',
+                            'mode': 'upgrade_applied'
+                        })
+                    except Exception as e:
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': f'Greška pri unapređenju: {str(e)}',
+                            'status': 'error',
+                            'mode': 'upgrade_error'
+                        }, status=500)
+
                 # Trigger prompt
                 if any(k in text_cmd for k in ['unapredi se', 'unapredi', 'da li da se unapredim', 'upgrade']):
                     request.session['upgrade_pending'] = True
@@ -924,7 +953,7 @@ class DeepSeekAPI(View):
                     'kvote', 'koeficij', 'fudbal', 'utakmic', 'premier league', 'epl', 'la liga', 'laliga',
                     'bundesliga', 'serie a', 'serija a', 'ligue 1', 'ucl', 'liga sampiona', 'superliga', 'srbija'
                 ]
-                is_sport = any(k in text_lc for k in sports_keywords)
+                is_sport = any(k in text_lc for k in sports_keywords) or ('sofascore' in text_lc)
                 if is_sport:
                     from . import sofascore
                     key_map = {
@@ -942,12 +971,17 @@ class DeepSeekAPI(View):
                             chosen_key = val
                             break
 
+                    # Detect potential team names (simple token heuristic)
+                    stop_words = {'kvote','koeficij','danas','sutra','sledeci','sledećih','naredni','dan','liga','utakmica','rezultat','rezultati','sofascore'}
+                    tokens = re.findall(r"[a-zA-ZčćšđžČĆŠĐŽ]+", text_lc)
+                    team_candidates = [t for t in tokens if len(t) >= 4 and t not in stop_words and t not in key_map.keys()]
+
                     hours_val = 82
                     if any(w in text_lc for w in ['sutra', 'sledeci', 'sledećih 7', 'naredni dan']):
                         hours_val = None  # treat as all (7 days in sofascore helper)
 
-                    # 2-minute cache key
-                    cache_key = f"sports:{chosen_key or 'mix'}:{hours_val}"
+                    # 2-minute cache key (include team hint)
+                    cache_key = f"sports:{chosen_key or 'mix'}:{hours_val}:{','.join(team_candidates[:2]) if team_candidates else ''}"
                     cached = self._sports_cache.get(cache_key)
                     now_ts = time.time()
                     if cached and (now_ts - cached.get('ts', 0) < 120):
@@ -957,7 +991,6 @@ class DeepSeekAPI(View):
                             sofa = sofascore.fetch_competition(chosen_key, hours=hours_val, debug=False)
                         else:
                             sofa = sofascore.fetch_quick(hours=hours_val, keys=['epl','laliga','bundesliga','seriea','ligue1','ucl','serbia'], debug=False)
-                        # store in cache
                         try:
                             self._sports_cache[cache_key] = {'ts': now_ts, 'data': sofa}
                         except Exception:
