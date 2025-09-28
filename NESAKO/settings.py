@@ -115,7 +115,7 @@ else:
             "DATABASE_URL nije postavljen u production okruženju."
         )
     # Development fallback only
-    print("🗄️ Using SQLite (development fallback)")
+    print("Using SQLite (development fallback)")
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
