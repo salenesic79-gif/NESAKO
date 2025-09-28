@@ -400,7 +400,8 @@ class FileOperationsManager:
             ],
             'github_sync': [
                 'prebaci na github', 'github sync', 'sačuvaj na github',
-                'push na github', 'commit i push', 'git commit i push'
+                'push na github', 'commit i push', 'git commit i push',
+                'sinhronizuj sa github', 'upload na github'
             ]
         }
         
