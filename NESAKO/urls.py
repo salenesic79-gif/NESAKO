@@ -10,6 +10,8 @@ from ai_assistant.views import (
     web_check,
     health_view,
     manifest_view,
+    get_unfinished_tasks,
+    process_unfinished_tasks,
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
@@ -36,6 +38,9 @@ urlpatterns = [
     path('lessons/<int:lesson_id>/feedback/', csrf_exempt(update_feedback), name='update_feedback'),
     # Web check endpoint
     path('web_check', csrf_exempt(web_check), name='web_check'),
+    # Task management endpoints
+    path('api/unfinished-tasks/', csrf_exempt(get_unfinished_tasks), name='unfinished_tasks'),
+    path('api/process-unfinished-tasks/', csrf_exempt(process_unfinished_tasks), name='process_unfinished_tasks'),
     # Explicit manifest route (safety net)
     path('manifest.json', manifest_view, name='manifest_json'),
     # Health endpoint
