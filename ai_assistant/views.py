@@ -858,6 +858,142 @@ class DeepSeekAPI(View):
                 request.session.create()
                 session_id = request.session.session_key
 
+            # --- Self-upgrade confirmation flow (prompt -> 'da' applies -> 'ponisti' reverts) ---
+            try:
+                text_cmd = (user_input or '').strip().lower()
+                pending = bool(request.session.get('upgrade_pending', False))
+
+                # Trigger prompt
+                if any(k in text_cmd for k in ['unapredi se', 'unapredi', 'da li da se unapredim', 'upgrade']):
+                    request.session['upgrade_pending'] = True
+                    return JsonResponse({
+                        'response': 'Želite li da unapredim sebe i aktiviram napredne module? Odgovori "da" za potvrdu ili "ponisti" za odustajanje.',
+                        'status': 'ok',
+                        'mode': 'upgrade_prompt'
+                    })
+
+                # Confirm
+                if pending and text_cmd == 'da':
+                    try:
+                        if hasattr(self.memory, 'save_module_snapshot'):
+                            self.memory.save_module_snapshot('auto')
+                        if hasattr(self.memory, 'set_modules_active'):
+                            self.memory.set_modules_active(True)
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': 'Unapređenje aktivirano. Ako želiš da vratiš prethodno stanje, napiši "ponisti".',
+                            'status': 'ok',
+                            'mode': 'upgrade_applied'
+                        })
+                    except Exception as e:
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': f'Greška pri unapređenju: {str(e)}',
+                            'status': 'error',
+                            'mode': 'upgrade_error'
+                        }, status=500)
+
+                # Revert
+                if text_cmd == 'ponisti':
+                    try:
+                        ok = False
+                        if hasattr(self.memory, 'restore_module_snapshot'):
+                            ok = bool(self.memory.restore_module_snapshot('auto'))
+                        request.session['upgrade_pending'] = False
+                        return JsonResponse({
+                            'response': 'Vraćeno prethodno stanje.' if ok else 'Nije pronađen snapshot za vraćanje.',
+                            'status': 'ok' if ok else 'error',
+                            'mode': 'upgrade_reverted' if ok else 'upgrade_revert_failed'
+                        }, status=200 if ok else 404)
+                    except Exception as e:
+                        return JsonResponse({
+                            'response': f'Greška pri vraćanju: {str(e)}',
+                            'status': 'error',
+                            'mode': 'upgrade_revert_error'
+                        }, status=500)
+            except Exception as e:
+                print(f"Upgrade flow error: {e}")
+
+            # --- Sports router: SofaScore as primary (fixtures), Fudbal91 as optional odds enrichment ---
+            try:
+                text_lc = (user_input or '').lower()
+                sports_keywords = [
+                    'kvote', 'koeficij', 'fudbal', 'utakmic', 'premier league', 'epl', 'la liga', 'laliga',
+                    'bundesliga', 'serie a', 'serija a', 'ligue 1', 'ucl', 'liga sampiona', 'superliga', 'srbija'
+                ]
+                is_sport = any(k in text_lc for k in sports_keywords)
+                if is_sport:
+                    from . import sofascore
+                    key_map = {
+                        'epl': 'epl', 'premier league': 'epl',
+                        'la liga': 'laliga', 'laliga': 'laliga',
+                        'bundesliga': 'bundesliga',
+                        'serie a': 'seriea', 'serija a': 'seriea',
+                        'ligue 1': 'ligue1',
+                        'ucl': 'ucl', 'liga sampiona': 'ucl',
+                        'superliga': 'serbia', 'srbija': 'serbia',
+                    }
+                    chosen_key = None
+                    for kw, val in key_map.items():
+                        if kw in text_lc:
+                            chosen_key = val
+                            break
+
+                    hours_val = 82
+                    if any(w in text_lc for w in ['sutra', 'sledeci', 'sledećih 7', 'naredni dan']):
+                        hours_val = None  # treat as all (7 days in sofascore helper)
+
+                    if chosen_key:
+                        sofa = sofascore.fetch_competition(chosen_key, hours=hours_val, debug=False)
+                    else:
+                        sofa = sofascore.fetch_quick(hours=hours_val, keys=['epl','laliga','bundesliga','seriea','ligue1','ucl','serbia'], debug=False)
+
+                    items = sofa.get('items', []) if isinstance(sofa, dict) else []
+
+                    odds_note = ''
+                    try:
+                        if chosen_key and len(items) > 0:
+                            from . import fudbal91
+                            fd = fudbal91.fetch_competition(chosen_key, hours=hours_val)
+                            fd_items = fd.get('items', []) if isinstance(fd, dict) else []
+                            odds_by_match = {x.get('match',''): x.get('odds', {}) for x in fd_items}
+                            for it in items:
+                                m = it.get('match','')
+                                if m in odds_by_match and odds_by_match[m]:
+                                    it['odds'] = odds_by_match[m]
+                            if not fd_items:
+                                odds_note = ' (kvote trenutno nisu dostupne)'
+                    except Exception:
+                        odds_note = ' (kvote trenutno nisu dostupne)'
+
+                    if items:
+                        lines = []
+                        header = 'Rezultati (SofaScore kao izvor' + (', Fudbal91 kvote' if any('odds' in i and i['odds'] for i in items) else '') + f'){odds_note}:'
+                        lines.append(header)
+                        for it in items[:10]:
+                            league = it.get('league','')
+                            match = it.get('match','')
+                            ko = it.get('kickoff','')
+                            odds = it.get('odds', {}) or {}
+                            oddstxt = ''
+                            if odds and isinstance(odds, dict):
+                                basic = []
+                                for k in ['1','X','2']:
+                                    v = odds.get(k)
+                                    if v:
+                                        basic.append(f"{k}:{v}")
+                                oddstxt = (' | ' + ' '.join(basic)) if basic else ''
+                            lines.append(f"- {league} — {match} — {ko}{oddstxt}")
+                        resp_text = "\n".join(lines)
+                        self.memory.save_conversation(session_id, user_input, resp_text)
+                        return JsonResponse({'response': resp_text, 'status': 'ok', 'mode': 'sports'})
+                    else:
+                        hint = 'Nema rezultata za sportski upit. Navedite ligu (EPL, La Liga...) ili proširite period (npr. sutra/sledeci).' 
+                        self.memory.save_conversation(session_id, user_input, hint)
+                        return JsonResponse({'response': hint, 'status': 'ok', 'mode': 'sports'})
+            except Exception as e:
+                print(f"Sports router error: {e}")
+
             # Auto-create/load AI modules if enabled (default True when not set)
             try:
                 if request.session.get('auto_modules_enabled') is None:
@@ -1354,7 +1490,8 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
 
 # ============== PUBLIC JSON ENDPOINTS ==============
 from django.views.decorators.http import require_http_methods
-from django.http import FileResponse
+from django.http import JsonResponse, FileResponse
+from django.urls import get_resolver
 from django.contrib.staticfiles import finders
 
 @csrf_exempt
@@ -1400,8 +1537,48 @@ def fudbal_quick_odds(request):
         from . import fudbal91
         hours = request.GET.get('hours')
         all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
         hours_val = None if (all_flag and all_flag in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else fudbal91.WINDOW_HOURS)
-        data = fudbal91.fetch_quick_odds(hours=hours_val)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = fudbal91.fetch_quick_odds(hours=hours_val, debug=debug)
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+# --- SofaScore integrations (read-only JSON endpoints) ---
+@csrf_exempt
+@require_http_methods(["GET"])
+def sofa_quick(request):
+    """Return upcoming football events within window using SofaScore public JSON (no odds)."""
+    try:
+        from . import sofascore
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
+        keys = request.GET.get('keys', '')  # comma-separated: epl,laliga,ucl,...
+        key_list = [k.strip() for k in keys.split(',') if k.strip()] if keys else None
+        hours_val = None if (all_flag and all_flag.lower() in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else sofascore.WINDOW_HOURS)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = sofascore.fetch_quick(hours=hours_val, keys=key_list, debug=debug)
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def sofa_competition(request):
+    """Return events for a single competition key using SofaScore public JSON (no odds)."""
+    try:
+        from . import sofascore
+        key = request.GET.get('key', 'epl')
+        hours = request.GET.get('hours')
+        all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
+        hours_val = None if (all_flag and all_flag.lower() in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else sofascore.WINDOW_HOURS)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = sofascore.fetch_competition(key=key, hours=hours_val, debug=debug)
         return JsonResponse(data)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -1415,8 +1592,10 @@ def fudbal_odds_changes(request):
         from . import fudbal91
         hours = request.GET.get('hours')
         all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
         hours_val = None if (all_flag and all_flag in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else fudbal91.WINDOW_HOURS)
-        data = fudbal91.fetch_odds_changes(hours=hours_val)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = fudbal91.fetch_odds_changes(hours=hours_val, debug=debug)
         return JsonResponse(data)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -1437,8 +1616,10 @@ def fudbal_competition(request):
         target = url or key or 'ucl'
         hours = request.GET.get('hours')
         all_flag = request.GET.get('all')
+        debug_flag = request.GET.get('debug')
         hours_val = None if (all_flag and all_flag in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else fudbal91.WINDOW_HOURS)
-        data = fudbal91.fetch_competition(target, hours=hours_val)
+        debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+        data = fudbal91.fetch_competition(target, hours=hours_val, debug=debug)
         return JsonResponse(data)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -1502,6 +1683,27 @@ def manifest_view(request):
             "display": "standalone"
         }
         return JsonResponse(simple_manifest)
+
+
+@require_http_methods(["GET"])
+def debug_routes(request):
+    """List all registered URL patterns to diagnose 404 issues on deployment."""
+    try:
+        resolver = get_resolver()
+        patterns = []
+        def collect(pattern_list, prefix=""):
+            for p in pattern_list:
+                try:
+                    if hasattr(p, 'url_patterns'):
+                        collect(p.url_patterns, prefix + str(getattr(p, 'pattern', '')))
+                    else:
+                        patterns.append(prefix + str(getattr(p, 'pattern', '')))
+                except Exception:
+                    continue
+        collect(resolver.url_patterns)
+        return JsonResponse({"routes": patterns})
+    except Exception as e:
+        return JsonResponse({"error": str(e), "routes": []}, status=500)
 
 @require_http_methods(["GET"])
 def health_view(request):
