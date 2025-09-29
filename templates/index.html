@@ -536,17 +536,18 @@
         
         #user-input {
             width: 100%;
-            min-height: 60px;
-            max-height: 200px;
-            padding: 18px;
+            min-height: 44px;
+            max-height: 180px;
+            padding: 14px 18px;
             border: 2px solid #e0e0f0;
             border-radius: 25px;
             font-size: 16px;
-            resize: vertical;
+            resize: none; /* auto-grow umesto ručnog resize-a */
             font-family: inherit;
             outline: none;
-            transition: all 0.3s;
-            line-height: 1.4;
+            transition: all 0.2s;
+            line-height: 1.45;
+            overflow-y: auto; /* prikaži skrol tek kad pređe max-height */
         }
         
         #user-input:focus {
@@ -723,8 +724,10 @@
             
             /* Adjust textarea height */
             #user-input {
-                min-height: 50px !important;
+                min-height: 42px !important;
+                max-height: 160px !important;
                 font-size: 16px;
+                line-height: 1.45;
             }
         }
         
