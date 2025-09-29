@@ -950,17 +950,29 @@ class DeepSeekAPI(View):
             try:
                 text_lc = (user_input or '').lower()
                 
-                # ALIAS MAPPING
+                # ALIAS MAPPING (pojačano)
                 alias_map = {
-                    'ars': 'arsenal', 'arsenal': 'arsenal',
-                    'man city': 'manchester city', 'manchester city': 'manchester city',
-                    'man utd': 'manchester united', 'manchester united': 'manchester united',
+                    # klubovi
+                    'ars': 'arsenal', 'arsenal': 'arsenal', 'gunners': 'arsenal',
+                    'man city': 'manchester city', 'mancity': 'manchester city', 'city': 'manchester city',
+                    'man utd': 'manchester united', 'manchester united': 'manchester united', 'united': 'manchester united',
+                    'milan fc': 'milan', 'ac milan': 'milan', 'milan': 'milan',
+                    'inter': 'inter milan', 'inter milano': 'inter milan',
+                    'juve': 'juventus', 'juventus': 'juventus',
+                    'real': 'real madrid', 'rmadrid': 'real madrid', 'real madrid': 'real madrid',
+                    'barca': 'barcelona', 'fc barcelona': 'barcelona', 'barcelona': 'barcelona',
+                    'roma': 'as roma', 'as roma': 'as roma',
+                    'napoli': 'napoli', 'ssc napoli': 'napoli',
+                    'psg': 'paris saint-germain', 'paris sg': 'paris saint-germain',
                     'zvezda': 'crvena zvezda', 'crvena zvezda': 'crvena zvezda',
                     'partizan': 'partizan',
-                    'pl': 'premier league', 'prem': 'premier league',
-                    'ls': 'champions league', 'ucl': 'champions league',
-                    'epl': 'premier league', 'laliga': 'la liga', 
-                    'bundesliga': 'bundesliga', 'serie a': 'serie a'
+                    # lige
+                    'pl': 'premier league', 'prem': 'premier league', 'premijer': 'premier league', 'epl': 'premier league',
+                    'laliga': 'la liga', 'la liga': 'la liga',
+                    'bundesliga': 'bundesliga',
+                    'serija a': 'serie a', 'serie a': 'serie a',
+                    'ligue1': 'ligue 1', 'ligue 1': 'ligue 1',
+                    'ucl': 'champions league', 'liga sampiona': 'champions league', 'ls': 'champions league'
                 }
                 
                 # Normalizuj upit sa aliasima
@@ -1000,7 +1012,7 @@ class DeepSeekAPI(View):
                     # Detect potential team names (simple token heuristic)
                     stop_words = {'kvote','koeficij','danas','sutra','sledeci','sledećih','naredni','dan','liga','utakmica','rezultat','rezultati','sofascore'}
                     tokens = re.findall(r"[a-zA-ZčćšđžČĆŠĐŽ]+", normalized_query)
-                    team_candidates = [t for t in tokens if len(t) >= 4 and t not in stop_words and t not in key_map.keys()]
+                    team_candidates = [t for t in tokens if len(t) >= 3 and t not in stop_words and t not in key_map.keys()]
 
                     hours_val = 82
                     if any(w in normalized_query for w in ['sutra', 'sledeci', 'sledećih 7', 'naredni dan']):
@@ -1106,8 +1118,13 @@ class DeepSeekAPI(View):
 
                     if items:
                         lines = []
-                        header = 'Rezultati (SofaScore kao izvor' + (', Fudbal91 kvote' if any('odds' in i and i['odds'] for i in items) else '') + f'){odds_note}'
-                        if cached:  # Dodaj (keširano) ako je keširano
+                        # Jasna oznaka izvora i keš status
+                        header = 'Rezultati (SofaScore)'
+                        if any('odds' in i and i['odds'] for i in items):
+                            header += ' + Fudbal91 kvote'
+                        if odds_note:
+                            header += odds_note
+                        if cached:
                             header += ' (keširano)'
                         header += ':'
 
