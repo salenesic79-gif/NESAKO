@@ -75,22 +75,52 @@ def _within_window(ts: int, hours: Optional[int]) -> bool:
     return now <= dt <= now + timedelta(hours=hours)
 
 
-def _match_comp(competitions: List[str], names: List[str]) -> bool:
+def _norm(s: str) -> str:
+    return (s or "").strip().lower()
+
+
+def _match_comp(competitions: List[str], names: List[str], exact: bool) -> bool:
     if not competitions:
         return True
-    nm = " ".join(names).lower()
-    for c in competitions:
-        if c.lower() in nm:
-            return True
-    return False
+    n1 = _norm(names[0] if len(names) > 0 else "")
+    n2 = _norm(names[1] if len(names) > 1 else "")
+    if exact:
+        for c in competitions:
+            cc = _norm(c)
+            if cc == n1 or cc == n2:
+                return True
+        return False
+    else:
+        nm = f"{n1} {n2}".strip()
+        for c in competitions:
+            if _norm(c) in nm:
+                return True
+        return False
 
 
-def fetch_quick(hours: Optional[int] = WINDOW_HOURS, keys: Optional[List[str]] = None, debug: bool = False) -> Dict:
-    """Fetch scheduled football events in the next window across multiple days and filter by competition names."""
-    cache_key = f"sofa:quick:{hours}:{','.join(keys or [])}"
-    cached = _cache_get(cache_key)
-    if cached:
-        return cached
+def fetch_quick(
+    hours: Optional[int] = WINDOW_HOURS,
+    keys: Optional[List[str]] = None,
+    debug: bool = False,
+    *,
+    team: Optional[str] = None,
+    date: Optional[str] = None,  # YYYY-MM-DD
+    nocache: bool = False,
+    exact: bool = False,
+) -> Dict:
+    """Fetch scheduled football events in the next window (or a specific date) and filter by competition/team.
+
+    - keys: list of competition name strings from COMP_KEYS; matched loosely or exactly
+    - team: filter events where home or away contains this substring
+    - date: fetch only a specific YYYY-MM-DD (ignores hours window)
+    - nocache: bypass short in-memory cache
+    - exact: when True, competition must exactly equal tournament/category name
+    """
+    cache_key = f"sofa:quick:{hours}:{date}:{team}:{exact}:{','.join(keys or [])}"
+    if not nocache:
+        cached = _cache_get(cache_key)
+        if cached:
+            return cached
 
     items: List[Dict] = []
     comp_names = []
@@ -98,7 +128,7 @@ def fetch_quick(hours: Optional[int] = WINDOW_HOURS, keys: Optional[List[str]] =
         for k in keys:
             comp_names.extend(COMP_KEYS.get(k, []))
 
-    days = _dates_for_window(hours)
+    days = [date] if date else _dates_for_window(hours)
     debug_notes = []
     day_counts = {}
 
@@ -115,19 +145,30 @@ def fetch_quick(hours: Optional[int] = WINDOW_HOURS, keys: Optional[List[str]] =
                 tn = t.get("name", "")
                 cc = t.get("category", {}).get("name", "")
                 names = [tn, cc]
-                if keys and not _match_comp(comp_names, names):
+                if keys and not _match_comp(comp_names, names, exact):
                     continue
                 start_ts = ev.get("startTimestamp")
                 if not start_ts or not _within_window(start_ts, hours):
                     continue
                 home = ev.get("homeTeam", {}).get("name", "")
                 away = ev.get("awayTeam", {}).get("name", "")
+                if team:
+                    tt = _norm(team)
+                    if tt not in _norm(home) and tt not in _norm(away):
+                        continue
+                api_url = url
+                event_id = ev.get("id")
                 items.append({
                     "league": f"{cc} - {tn}".strip(" -"),
                     "match": f"{home} - {away}",
                     "kickoff": datetime.fromtimestamp(start_ts, tz=timezone.utc).isoformat(),
                     "odds": {},  # SofaScore public JSON usually lacks odds
-                    "source": "sofascore"
+                    "source": "sofascore",
+                    "api_url": api_url,
+                    "tournament": tn,
+                    "category": cc,
+                    "eventId": event_id,
+                    "startTimestamp": start_ts,
                 })
             except Exception:
                 continue
@@ -141,11 +182,21 @@ def fetch_quick(hours: Optional[int] = WINDOW_HOURS, keys: Optional[List[str]] =
             "filtered_competitions": comp_names or None,
             "count": len(items)
         }
-    _cache_set(cache_key, resp)
+    if not nocache:
+        _cache_set(cache_key, resp)
     return resp
 
 
-def fetch_competition(key: str, hours: Optional[int] = WINDOW_HOURS, debug: bool = False) -> Dict:
-    """Fetch a single competition by key (e.g., 'epl', 'laliga', ...) within window."""
+def fetch_competition(
+    key: str,
+    hours: Optional[int] = WINDOW_HOURS,
+    debug: bool = False,
+    *,
+    team: Optional[str] = None,
+    date: Optional[str] = None,
+    nocache: bool = False,
+    exact: bool = False,
+) -> Dict:
+    """Fetch a single competition by key within the window/date with optional strict match/team filter."""
     keys = [key] if key else None
-    return fetch_quick(hours=hours, keys=keys, debug=debug)
+    return fetch_quick(hours=hours, keys=keys, debug=debug, team=team, date=date, nocache=nocache, exact=exact)

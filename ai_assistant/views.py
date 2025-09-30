@@ -1846,10 +1846,16 @@ def sofa_quick(request):
         all_flag = request.GET.get('all')
         debug_flag = request.GET.get('debug')
         keys = request.GET.get('keys', '')  # comma-separated: epl,laliga,ucl,...
+        team = request.GET.get('team')
+        date = request.GET.get('date')  # YYYY-MM-DD
+        exact_flag = request.GET.get('exact')
+        nocache_flag = request.GET.get('nocache')
         key_list = [k.strip() for k in keys.split(',') if k.strip()] if keys else None
         hours_val = None if (all_flag and all_flag.lower() in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else sofascore.WINDOW_HOURS)
         debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
-        data = sofascore.fetch_quick(hours=hours_val, keys=key_list, debug=debug)
+        exact = bool(exact_flag and exact_flag.lower() in ['1', 'true', 'yes'])
+        nocache = bool(nocache_flag and nocache_flag.lower() in ['1', 'true', 'yes'])
+        data = sofascore.fetch_quick(hours=hours_val, keys=key_list, debug=debug, team=team, date=date, nocache=nocache, exact=exact)
         return JsonResponse(data)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -1865,9 +1871,15 @@ def sofa_competition(request):
         hours = request.GET.get('hours')
         all_flag = request.GET.get('all')
         debug_flag = request.GET.get('debug')
+        team = request.GET.get('team')
+        date = request.GET.get('date')
+        exact_flag = request.GET.get('exact')
+        nocache_flag = request.GET.get('nocache')
         hours_val = None if (all_flag and all_flag.lower() in ['1', 'true', 'yes']) else (int(hours) if hours and hours.isdigit() else sofascore.WINDOW_HOURS)
         debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
-        data = sofascore.fetch_competition(key=key, hours=hours_val, debug=debug)
+        exact = bool(exact_flag and exact_flag.lower() in ['1', 'true', 'yes'])
+        nocache = bool(nocache_flag and nocache_flag.lower() in ['1', 'true', 'yes'])
+        data = sofascore.fetch_competition(key=key, hours=hours_val, debug=debug, team=team, date=date, nocache=nocache, exact=exact)
         return JsonResponse(data)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
