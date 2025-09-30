@@ -30,6 +30,32 @@ from .task_processor import task_processor, create_code_analysis_task, create_fi
 from .nesako_chatbot import NESAKOChatbot
 from .models import LessonLearned
 
+# Optional sports modules (tsdb → sofascore → fudbal91)
+try:
+    from ai_assistant.tsdb import search_team, events_next_team, events_last_team  # type: ignore
+except Exception:
+    search_team = None
+    events_next_team = None
+    events_last_team = None
+try:
+    from ai_assistant.sofascore import get_live_scores as sofascore_live  # type: ignore
+except Exception:
+    sofascore_live = None
+try:
+    from ai_assistant.fudbal91 import get_results as f91_results  # type: ignore
+except Exception:
+    f91_results = None
+
+# Optional plugin discovery
+try:
+    from ai_assistant.module_loader import discover_plugins  # type: ignore
+except Exception:
+    discover_plugins = None
+try:
+    import ai_assistant.plugins as plugins_pkg  # type: ignore
+except Exception:
+    plugins_pkg = None
+
 class DeepSeekAPI(View):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -40,8 +66,19 @@ class DeepSeekAPI(View):
         self.file_operations = FileOperationsManager()
         # NESAKO Chatbot with ORM-backed memory and SerpAPI integration
         self.nesako = NESAKOChatbot()
+<<<<<<< HEAD
         # Simple in-memory cache for sports queries
         self._sports_cache = {}
+=======
+        # Try plugin discovery (non-fatal)
+        try:
+            if discover_plugins and plugins_pkg:
+                self.plugins = discover_plugins(plugins_pkg)
+            else:
+                self.plugins = []
+        except Exception:
+            self.plugins = []
+>>>>>>> 2fe5def (feat: sports modules (tsdbsofascorefudbal91), Lessons Learned, plugin loader; Railway Procfile + minimal requirements)
 
     # --- Safe stub: UI expects threat detection method ---
     def detect_critical_threats(self, text: str) -> list:
@@ -764,6 +801,63 @@ class DeepSeekAPI(View):
             print(f"News fetch error: {e}")
             return []
 
+    # --- Lessons Learned helpers ---
+    def check_lessons_learned(self, user_input: str) -> Optional[str]:
+        try:
+            qs = LessonLearned.objects.filter(lesson_text__icontains=user_input).order_by('-created_at')
+            first = qs.first()
+            if first:
+                return first.lesson_text
+        except Exception as e:
+            print(f"Lessons check error: {e}")
+        return None
+
+    def save_lesson(self, user_input: str, ai_response: str, source: str = 'ai', user: str = '') -> None:
+        try:
+            text = f"Q: {user_input}\nA: {ai_response}"
+            LessonLearned.objects.create(lesson_text=text, source=source, user=user)
+        except Exception as e:
+            print(f"Lessons save error: {e}")
+
+    # --- Sports integration: tsdb → sofascore → fudbal91 → web fallback ---
+    def get_sports_info(self, team_name: str) -> str:
+        try:
+            name = (team_name or '').strip()
+            if not name:
+                return "Nije prosleđeno ime tima."
+            # TSDB priority
+            if 'search_team' in globals() and search_team and events_next_team and events_last_team:
+                try:
+                    team = search_team(name)
+                    if team:
+                        team_id = team.get('id') or team.get('team_id')
+                        next_e = events_next_team(team_id) if team_id else None
+                        last_e = events_last_team(team_id) if team_id else None
+                        return json.dumps({'provider': 'tsdb', 'team': team, 'next': next_e, 'last': last_e}, ensure_ascii=False)
+                except Exception as e:
+                    print(f"TSDB error: {e}")
+            # Sofascore
+            if 'sofascore_live' in globals() and sofascore_live:
+                try:
+                    live = sofascore_live(name)
+                    if live:
+                        return json.dumps({'provider': 'sofascore', 'live': live}, ensure_ascii=False)
+                except Exception as e:
+                    print(f"Sofascore error: {e}")
+            # Fudbal91
+            if 'f91_results' in globals() and f91_results:
+                try:
+                    res = f91_results(name)
+                    if res:
+                        return json.dumps({'provider': 'fudbal91', 'results': res}, ensure_ascii=False)
+                except Exception as e:
+                    print(f"Fudbal91 error: {e}")
+            # Fallback web
+            synthesized = self.synthesize_answer_from_web(f"{name} rezultati utakmica raspored tabela")
+            return synthesized
+        except Exception as e:
+            return f"Greška pri preuzimanju sportskih informacija: {str(e)}"
+
     def post(self, request):
         print("=== NESAKO AI POST METHOD ===")
         try:
@@ -1180,6 +1274,31 @@ class DeepSeekAPI(View):
             # Update learning from current conversation
             self.update_learning_from_conversation(session_id, user_input, conversation_history)
             
+            # Lessons Learned: return existing learned answer if available
+            try:
+                learned = self.check_lessons_learned(user_input)
+                if learned:
+                    return JsonResponse({
+                        'response': learned,
+                        'status': 'success',
+                        'mode': 'lessons_learned'
+                    })
+            except Exception as e:
+                print(f"Lessons pre-check error: {e}")
+            
+            # Sports detection and fast path using integrated providers
+            try:
+                sports_keywords = ['sport', 'fudbal', 'utakmic', 'rezultat', 'raspored', 'tabela', 'meč', 'tekma', 'tim', 'team']
+                if any(k in user_input.lower() for k in sports_keywords):
+                    sports_info = self.get_sports_info(user_input)
+                    return JsonResponse({
+                        'response': sports_info,
+                        'status': 'success',
+                        'mode': 'sports_info'
+                    })
+            except Exception as e:
+                print(f"Sports detection error: {e}")
+            
             # Heavy task detection and processing
             if self.is_heavy_task(user_input):
                 heavy_task_id = f"heavy_{int(datetime.now().timestamp())}"
@@ -1539,6 +1658,12 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
                         if not ai_response.endswith('## 🔧 Šta sam uradio:'):
                             explanation = self.generate_task_explanation(user_input, tools_output)
                             ai_response += f"\n\n## 🔧 Šta sam uradio:\n{explanation}"
+
+                    # Save to Lessons Learned
+                    try:
+                        self.save_lesson(user_input, ai_response, source='deepseek', user=str(request.session.session_key))
+                    except Exception as e:
+                        print(f"Lessons save (success path) error: {e}")
 
                     return JsonResponse({
                         'response': ai_response,
