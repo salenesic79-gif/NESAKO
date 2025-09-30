@@ -19,19 +19,20 @@ if 'C:\\Users\\PC' in sys.path:
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'NESAKO.settings')
 
 if __name__ == '__main__':
-    """Run the Django development server"""
+    """Run the Django server (Railway/production uses Procfile to invoke this)."""
     from django.core.management import execute_from_command_line
-    
-    # Default arguments for development server
-    argv = ['main.py', 'runserver']
-    
-    # Check for custom port argument
-    if len(sys.argv) > 1:
-        port = sys.argv[1]
-        argv.append(f'127.0.0.1:{port}')
-    else:
-        argv.append('127.0.0.1:8080')
-    
+
+    # Prefer Railway PORT if present, bind to all interfaces
+    port = os.environ.get('PORT')
+    if not port:
+        # Allow override by CLI arg for local dev
+        if len(sys.argv) > 1:
+            port = sys.argv[1]
+        else:
+            port = '8080'
+
+    argv = ['main.py', 'runserver', f'0.0.0.0:{port}']
+
     # Execute Django management command
     execute_from_command_line(argv)
 else:
