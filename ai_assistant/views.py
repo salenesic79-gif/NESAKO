@@ -66,10 +66,8 @@ class DeepSeekAPI(View):
         self.file_operations = FileOperationsManager()
         # NESAKO Chatbot with ORM-backed memory and SerpAPI integration
         self.nesako = NESAKOChatbot()
-<<<<<<< HEAD
         # Simple in-memory cache for sports queries
         self._sports_cache = {}
-=======
         # Try plugin discovery (non-fatal)
         try:
             if discover_plugins and plugins_pkg:
@@ -78,7 +76,6 @@ class DeepSeekAPI(View):
                 self.plugins = []
         except Exception:
             self.plugins = []
->>>>>>> 2fe5def (feat: sports modules (tsdbsofascorefudbal91), Lessons Learned, plugin loader; Railway Procfile + minimal requirements)
 
     # --- Safe stub: UI expects threat detection method ---
     def detect_critical_threats(self, text: str) -> list:
