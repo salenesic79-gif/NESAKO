@@ -2006,6 +2006,33 @@ def debug_routes(request):
     except Exception as e:
         return JsonResponse({"error": str(e), "routes": []}, status=500)
 
+@csrf_exempt
+@require_http_methods(["GET"])
+def sports_verify(request):
+    """Aggregate tsdb/sofascore/fudbal91, cross-validate and return confidence per event."""
+    try:
+        from .sports_aggregator import aggregate_verify
+    except Exception as e:
+        return JsonResponse({"error": f"aggregator_unavailable: {e}"}, status=500)
+
+    team = request.GET.get('team')
+    key = request.GET.get('key')
+    date = request.GET.get('date')  # YYYY-MM-DD
+    hours = request.GET.get('hours')
+    exact_flag = request.GET.get('exact')
+    nocache_flag = request.GET.get('nocache')
+    debug_flag = request.GET.get('debug')
+
+    hours_val = int(hours) if hours and hours.isdigit() else None
+    exact = bool(exact_flag and exact_flag.lower() in ['1', 'true', 'yes'])
+    nocache = bool(nocache_flag and nocache_flag.lower() in ['1', 'true', 'yes'])
+    debug = bool(debug_flag and debug_flag.lower() in ['1', 'true', 'yes'])
+
+    try:
+        data = aggregate_verify(team=team, key=key, date=date, hours=hours_val, exact=exact, nocache=nocache, debug=debug)
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 @require_http_methods(["GET"])
 def health_view(request):
     """Health endpoint: proverava statiku (manifest.json), env varijable i DB dostupnost.

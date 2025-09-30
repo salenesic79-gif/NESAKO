@@ -6,6 +6,7 @@ from ai_assistant.views import (
     LoginView,
     LogoutView,
     ProtectedTemplateView,
+    sports_verify,
     fudbal_quick_odds,
     fudbal_odds_changes,
     fudbal_competition,
@@ -55,6 +56,9 @@ urlpatterns = [
     path('api/sofa/quick/', csrf_exempt(sofa_quick)),
     path('api/sofa/competition', csrf_exempt(sofa_competition), name='sofa_competition'),
     path('api/sofa/competition/', csrf_exempt(sofa_competition)),
+    # Sports aggregation verify endpoint
+    path('api/sports/verify', csrf_exempt(sports_verify), name='sports_verify'),
+    path('api/sports/verify/', csrf_exempt(sports_verify)),
     # Git sync endpoint
     path('api/git-sync/', csrf_exempt(git_sync_view), name='git_sync'),
     # GitHub sync endpoint
