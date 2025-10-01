@@ -964,6 +964,61 @@ class DeepSeekAPI(View):
                 text_cmd = (user_input or '').strip().lower()
                 pending = bool(request.session.get('upgrade_pending', False))
 
+                # EARLY SHORT-CIRCUIT: sports quick intent for chat UI compatibility
+                try:
+                    if any(k in text_cmd for k in ['liga sampiona', 'ucl', 'premier liga', 'epl', 'la liga', 'laliga', 'bundesliga', 'serie a', 'serija a', 'ligue 1', 'super liga', 'superliga']):
+                        from .sports_aggregator import aggregate_verify
+                        # Map keywords to keys
+                        key = None
+                        mapping = {
+                            'liga sampiona': 'ucl', 'ucl': 'ucl',
+                            'premier liga': 'epl', 'epl': 'epl',
+                            'la liga': 'laliga', 'laliga': 'laliga',
+                            'bundesliga': 'bundesliga',
+                            'serie a': 'seriea', 'serija a': 'seriea',
+                            'ligue 1': 'ligue1',
+                            'super liga': 'serbia', 'superliga': 'serbia'
+                        }
+                        for k, v in mapping.items():
+                            if k in text_cmd:
+                                key = v
+                                break
+                        # Date hint if danas/večeras
+                        date_str = None
+                        if any(k in text_cmd for k in ['danas','večeras','veceras','today']):
+                            date_str = datetime.now(pytz.timezone('Europe/Belgrade')).strftime('%Y-%m-%d')
+                        agg = aggregate_verify(team=None, key=key, date=date_str, hours=None, exact=True, nocache=True, debug=False)
+                        # Format a compact, Serbian response
+                        tz = pytz.timezone('Europe/Belgrade')
+                        lines = []
+                        title = {
+                            'ucl': 'Liga šampiona', 'epl': 'Premier liga', 'laliga': 'La Liga',
+                            'bundesliga': 'Bundesliga', 'seriea': 'Serie A', 'ligue1': 'Ligue 1', 'serbia': 'Super liga'
+                        }.get(key or 'ucl', 'Fudbal')
+                        lines.append(title)
+                        for r in (agg.get('results') or [])[:20]:
+                            ko = r.get('kickoff') or ''
+                            try:
+                                dt = datetime.fromisoformat(ko.replace('Z', '+00:00'))
+                                ko_local = dt.astimezone(tz).strftime('%d.%m %H:%M')
+                            except Exception:
+                                ko_local = ko
+                            conf = r.get('confidence')
+                            ev = r.get('evidence') or []
+                            ev_str = ','.join(ev) if isinstance(ev, list) else str(ev)
+                            lines.append(f"- {r.get('match','')} — {ko_local}  [conf:{conf}]  [{ev_str}]")
+                        text_out = "\n".join(lines) if len(lines) > 1 else f"{title}: nema pronađenih mečeva."
+                        return JsonResponse({
+                            'response': text_out,
+                            'content': text_out,
+                            'status': 'success',
+                            'mode': 'sports_quick',
+                            'raw': agg
+                        })
+                except Exception as _early_e:
+                    # Continue normal flow on any error
+                    print(f"Early sports intent error: {_early_e}")
+
                 # Immediate apply if the same message requests upgrade + sofascore usage
                 if (('unapredi' in text_cmd) or ('upgrade' in text_cmd)) and ('sofascore' in text_cmd):
                     try:
@@ -1126,15 +1181,48 @@ class DeepSeekAPI(View):
                                 self.memory.learn_from_conversation(session_id, user_input, text_out)
                             except Exception:
                                 pass
-                            return JsonResponse({'response': text_out, 'status': 'ok', 'mode': 'sports'})
+                            return JsonResponse({'response': text_out, 'content': text_out, 'status': 'success', 'mode': 'sports'})
                         except Exception as e:
                             # If aggregator fails, continue to TSDB/SofaScore path
                             print(f"Aggregator UCL error: {e}")
 
-                    # Detect potential team names (simple token heuristic)
+                    # Detect potential team names (simple token heuristic) → team agregacija ako postoji
                     stop_words = {'kvote','koeficij','danas','sutra','sledeci','sledećih','naredni','dan','liga','utakmica','rezultat','rezultati','sofascore'}
                     tokens = re.findall(r"[a-zA-ZčćšđžČĆŠĐŽ]+", normalized_query)
                     team_candidates = [t for t in tokens if len(t) >= 3 and t not in stop_words and t not in key_map.keys()]
+
+                    if team_candidates:
+                        try:
+                            from .sports_aggregator import aggregate_verify
+                            team_q = ' '.join(team_candidates[:2])
+                            date_str = None
+                            if any(k in normalized_query for k in ['danas','večeras','veceras','today']):
+                                date_str = datetime.now(pytz.timezone('Europe/Belgrade')).strftime('%Y-%m-%d')
+                            agg = aggregate_verify(team=team_q, key=chosen_key, date=date_str, hours=None, exact=False, nocache=True, debug=False)
+                            # Format timski
+                            lines = [f"Tim: {team_q}"]
+                            tz = pytz.timezone('Europe/Belgrade')
+                            for r in (agg.get('results') or [])[:20]:
+                                ko = r.get('kickoff') or ''
+                                try:
+                                    dt = datetime.fromisoformat(ko.replace('Z', '+00:00'))
+                                    dt_local = dt.astimezone(tz)
+                                    ko_str = dt_local.strftime('%d.%m %H:%M')
+                                except Exception:
+                                    ko_str = ko
+                                conf = r.get('confidence')
+                                ev = r.get('evidence') or []
+                                ev_str = ','.join(ev) if isinstance(ev, list) else str(ev)
+                                lines.append(f"- {r.get('match','')} — {ko_str}  [conf:{conf}]  [{ev_str}]")
+                            text_out = "\n".join(lines) if len(lines) > 1 else f"Nema pronađenih mečeva za tim: {team_q}."
+                            self.memory.save_conversation(session_id, user_input, text_out)
+                            try:
+                                self.memory.learn_from_conversation(session_id, user_input, text_out)
+                            except Exception:
+                                pass
+                            return JsonResponse({'response': text_out, 'content': text_out, 'status': 'success', 'mode': 'sports', 'raw': agg})
+                        except Exception as e:
+                            print(f"Team aggregator error: {e}")
 
                     hours_val = 82
                     if any(w in normalized_query for w in ['sutra', 'sledeci', 'sledećih 7', 'naredni dan']):
@@ -1189,7 +1277,7 @@ class DeepSeekAPI(View):
                             self.memory.learn_from_conversation(session_id, user_input, resp_text)
                         except Exception as _e:
                             print(f"Learning hook (tsdb) error: {_e}")
-                        return JsonResponse({'response': resp_text, 'status': 'ok', 'mode': 'sports'})
+                        return JsonResponse({'response': resp_text, 'content': resp_text, 'status': 'success', 'mode': 'sports'})
 
                     # 2-minute cache key (include team hint)
                     cache_key = f"sports:{chosen_key or 'mix'}:{hours_val}:{','.join(team_candidates[:2]) if team_candidates else ''}"
@@ -1271,7 +1359,7 @@ class DeepSeekAPI(View):
                             self.memory.learn_from_conversation(session_id, user_input, resp_text)
                         except Exception as _e:
                             print(f"Learning hook (sports) error: {_e}")
-                        return JsonResponse({'response': resp_text, 'status': 'ok', 'mode': 'sports'})
+                        return JsonResponse({'response': resp_text, 'content': resp_text, 'status': 'success', 'mode': 'sports'})
                     else:
                         hint = 'Nema rezultata za sportski upit. Navedite ligu (EPL, La Liga...) ili proširite period (npr. sutra/sledeci).' 
                         self.memory.save_conversation(session_id, user_input, hint)
@@ -1279,7 +1367,7 @@ class DeepSeekAPI(View):
                             self.memory.learn_from_conversation(session_id, user_input, hint)
                         except Exception as _e:
                             print(f"Learning hook (sports-empty) error: {_e}")
-                        return JsonResponse({'response': hint, 'status': 'ok', 'mode': 'sports'})
+                        return JsonResponse({'response': hint, 'content': hint, 'status': 'success', 'mode': 'sports'})
             except Exception as e:
                 print(f"Sports router error: {e}")
 
@@ -1803,10 +1891,10 @@ TRENUTNO VREME: {current_time_str}, {day_serbian}, {current_date}
                 
         except json.JSONDecodeError as e:
             print(f"JSON error: {e}")
-            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+            return JsonResponse({'error': 'Invalid JSON', 'response': 'Greška: neispravan JSON format.'}, status=400)
         except Exception as e:
             print(f"Error: {e}")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': str(e), 'response': f'Greška: {str(e)}'}, status=500)
 
 # ============== PUBLIC JSON ENDPOINTS ==============
 from django.views.decorators.http import require_http_methods

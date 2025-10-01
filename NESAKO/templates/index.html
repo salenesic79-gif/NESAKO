@@ -1585,11 +1585,12 @@ Možete koristiti:
                 return;
             }
             
-            if (data.status === 'success' || data.response) {
-                console.log('Adding AI response to chat:', data.response);
+            if (data && (data.status === 'success' || data.response || data.content)) {
+                const msg = data.response || data.content || '';
+                console.log('Adding AI response to chat:', msg);
                 
                 // Direct message add - bypass typing simulation for now
-                addMessage(data.response, false, {
+                addMessage(msg, false, {
                     mode: data.mode || 'standard',
                     tools_used: data.tools_used || false,
                     context_aware: data.context_aware || false
@@ -1597,8 +1598,9 @@ Možete koristiti:
                 updateStatus('Spreman za rad', false);
                 isTyping = false;
             } else {
-                console.log('Error response:', data.error);
-                addMessage(`Greška: ${data.error}`, false, { mode: 'error' });
+                const errText = (data && (data.response || data.content || data.error)) || 'Nepoznata greška';
+                console.log('Error response:', data && data.error);
+                addMessage(`Greška: ${errText}` , false, { mode: 'error' });
                 updateStatus('Greška u obradi', false);
                 isTyping = false;
             }
