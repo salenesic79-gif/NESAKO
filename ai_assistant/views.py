@@ -1443,16 +1443,10 @@ class DeepSeekAPI(View):
             except Exception as e:
                 print(f"Lessons pre-check error: {e}")
             
-            # Sports detection and fast path using integrated providers
+            # Sports detection generic fast path (get_sports_info) DISABLED
+            # Reason: lock sports answers to verified aggregator only (aggregate_verify in early intent)
             try:
-                sports_keywords = ['sport', 'fudbal', 'utakmic', 'rezultat', 'raspored', 'tabela', 'meč', 'tekma', 'tim', 'team']
-                if any(k in user_input.lower() for k in sports_keywords):
-                    sports_info = self.get_sports_info(user_input)
-                    return JsonResponse({
-                        'response': sports_info,
-                        'status': 'success',
-                        'mode': 'sports_info'
-                    })
+                pass
             except Exception as e:
                 print(f"Sports detection error: {e}")
             
