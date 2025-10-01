@@ -1100,6 +1100,37 @@ class DeepSeekAPI(View):
                             chosen_key = val
                             break
 
+                    # Special branch: Champions League via aggregator → return formatted response for chat
+                    if chosen_key == 'ucl' or ('champions league' in normalized_query):
+                        try:
+                            from .sports_aggregator import aggregate_verify
+                            agg = aggregate_verify(team=None, key='ucl', date=None, hours=None, exact=True, nocache=True, debug=False)
+                            # Format
+                            lines = ["Liga šampiona"]
+                            tz = pytz.timezone('Europe/Belgrade')
+                            for r in (agg.get('results') or [])[:20]:
+                                ko = r.get('kickoff') or ''
+                                try:
+                                    dt = datetime.fromisoformat(ko.replace('Z', '+00:00'))
+                                    dt_local = dt.astimezone(tz)
+                                    ko_str = dt_local.strftime('%d.%m %H:%M')
+                                except Exception:
+                                    ko_str = ko
+                                conf = r.get('confidence')
+                                ev = r.get('evidence') or []
+                                ev_str = ','.join(ev) if isinstance(ev, list) else str(ev)
+                                lines.append(f"- {r.get('match','')} — {ko_str}  [conf:{conf}]  [{ev_str}]")
+                            text_out = "\n".join(lines) if len(lines) > 1 else "Liga šampiona: nema pronađenih mečeva."
+                            self.memory.save_conversation(session_id, user_input, text_out)
+                            try:
+                                self.memory.learn_from_conversation(session_id, user_input, text_out)
+                            except Exception:
+                                pass
+                            return JsonResponse({'response': text_out, 'status': 'ok', 'mode': 'sports'})
+                        except Exception as e:
+                            # If aggregator fails, continue to TSDB/SofaScore path
+                            print(f"Aggregator UCL error: {e}")
+
                     # Detect potential team names (simple token heuristic)
                     stop_words = {'kvote','koeficij','danas','sutra','sledeci','sledećih','naredni','dan','liga','utakmica','rezultat','rezultati','sofascore'}
                     tokens = re.findall(r"[a-zA-ZčćšđžČĆŠĐŽ]+", normalized_query)
