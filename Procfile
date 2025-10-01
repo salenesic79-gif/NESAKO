@@ -1,1 +1,1 @@
-web: DJANGO_SETTINGS_MODULE=NESAKO.settings /app/.venv/bin/python -m django collectstatic --noinput && exec /app/.venv/bin/python -m gunicorn wsgi:application --bind 0.0.0.0:${PORT:-8080}
+web: python manage.py collectstatic --noinput && gunicorn NESAKO.wsgi:application --bind 0.0.0.0:${PORT:-8080} --workers 3 --timeout 120 --log-file -

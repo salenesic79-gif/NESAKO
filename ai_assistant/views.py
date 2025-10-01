@@ -983,20 +983,41 @@ class DeepSeekAPI(View):
                             if k in text_cmd:
                                 key = v
                                 break
-                        # Date hint if danas/večeras
-                        date_str = None
-                        if any(k in text_cmd for k in ['danas','večeras','veceras','today']):
-                            date_str = datetime.now(pytz.timezone('Europe/Belgrade')).strftime('%Y-%m-%d')
+                        # Always use today's date when user asks 'danas/večeras/today' else default to today for UCL to avoid stale lists
+                        tz = pytz.timezone('Europe/Belgrade')
+                        today_str = datetime.now(tz).strftime('%Y-%m-%d')
+                        date_str = today_str if any(k in text_cmd for k in ['danas','večeras','veceras','today']) or (key == 'ucl') else None
+                        # Strict verify: exact=True and no web fallback here
                         agg = aggregate_verify(team=None, key=key, date=date_str, hours=None, exact=True, nocache=True, debug=False)
                         # Format a compact, Serbian response
-                        tz = pytz.timezone('Europe/Belgrade')
                         lines = []
-                        title = {
+                        title_map = {
                             'ucl': 'Liga šampiona', 'epl': 'Premier liga', 'laliga': 'La Liga',
                             'bundesliga': 'Bundesliga', 'seriea': 'Serie A', 'ligue1': 'Ligue 1', 'serbia': 'Super liga'
-                        }.get(key or 'ucl', 'Fudbal')
-                        lines.append(title)
-                        for r in (agg.get('results') or [])[:20]:
+                        }
+                        title = title_map.get(key or 'ucl', 'Fudbal')
+
+                        # Strict filtering for UCL to avoid pogrešne utakmice
+                        results = agg.get('results') or []
+                        if key == 'ucl':
+                            def is_ucl(r):
+                                league = (r.get('league') or r.get('competition') or '').lower()
+                                title_r = (r.get('title') or '').lower()
+                                return ('champions' in league) or ('sampiona' in league) or ('champions league' in title_r) or ('liga sampiona' in title_r)
+                            results = [r for r in results if is_ucl(r)]
+
+                        if not results:
+                            no_msg = f"{title}: nema pronađenih mečeva za {date_str or today_str}."
+                            return JsonResponse({
+                                'response': no_msg,
+                                'content': no_msg,
+                                'status': 'success',
+                                'mode': 'sports_quick',
+                                'raw': agg
+                            })
+
+                        lines.append(f"{title} — {date_str or today_str}")
+                        for r in results[:20]:
                             ko = r.get('kickoff') or ''
                             try:
                                 dt = datetime.fromisoformat(ko.replace('Z', '+00:00'))
@@ -1298,7 +1319,7 @@ class DeepSeekAPI(View):
                                 chatbot = NESAKOChatbot()
                                 web_results = chatbot._simple_web_search(user_input)
                                 fallback_response = f"🌐 Web pretraga (fallback) za: {user_input}\n\n{web_results}"
-                                return JsonResponse({'response': fallback_response, 'status': 'ok', 'mode': 'sports'})
+                                return JsonResponse({'response': fallback_response, 'content': fallback_response, 'status': 'success', 'mode': 'sports'})
                             except Exception as e:
                                 sofa = {'events': []}
                         # === KRAJ FALLBACK ===

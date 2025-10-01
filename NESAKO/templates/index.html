@@ -1585,8 +1585,21 @@ Možete koristiti:
                 return;
             }
             
-            if (data && (data.status === 'success' || data.response || data.content)) {
-                const msg = data.response || data.content || '';
+            if (data && (data.status === 'success' || data.response || data.content || (data.raw && Array.isArray(data.raw.results)))) {
+                let msg = data.response || data.content || '';
+                // If no message but raw results exist, format them
+                if (!msg && data.raw && Array.isArray(data.raw.results)) {
+                    const lines = [];
+                    const title = (data.mode && data.mode.includes('sports')) ? 'Sportski rezultati' : 'Rezultati';
+                    lines.push(title);
+                    (data.raw.results || []).slice(0, 20).forEach(r => {
+                        const match = (r && r.match) || '';
+                        const ko = (r && r.kickoff) || '';
+                        const conf = (r && r.confidence) != null ? r.confidence : '';
+                        lines.push(`- ${match} — ${ko} ${conf !== '' ? `[conf:${conf}]` : ''}`.trim());
+                    });
+                    msg = lines.join('\n');
+                }
                 console.log('Adding AI response to chat:', msg);
                 
                 // Direct message add - bypass typing simulation for now
@@ -1906,11 +1919,22 @@ Možete koristiti:
         generateTaskItems();
         
         // PWA Service Worker - enabled with better caching
+        // Disable SW for now to avoid stale cached UI while debugging
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/static/sw.js')
-                    .then(() => console.log('ServiceWorker registration successful'))
-                    .catch(err => console.log('ServiceWorker registration failed: ', err));
+            window.addEventListener('load', async function() {
+                try {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    for (const reg of regs) {
+                        try { await reg.unregister(); } catch (e) { console.log('SW unregister error', e); }
+                    }
+                    if (window.caches && caches.keys) {
+                        const keys = await caches.keys();
+                        await Promise.all(keys.map(k => caches.delete(k)));
+                    }
+                    console.log('ServiceWorker disabled and caches cleared');
+                } catch (e) {
+                    console.log('ServiceWorker cleanup error:', e);
+                }
             });
         }
         
