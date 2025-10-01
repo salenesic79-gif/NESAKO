@@ -801,6 +801,16 @@ class DeepSeekAPI(View):
     # --- Lessons Learned helpers ---
     def check_lessons_learned(self, user_input: str) -> Optional[str]:
         try:
+            # Lock sports answers to verified sources only – do not use lessons for sports-like queries
+            txt = (user_input or '').lower()
+            sports_markers = [
+                'liga sampiona', 'ucl', 'premier liga', 'epl', 'la liga', 'laliga',
+                'bundesliga', 'serie a', 'serija a', 'ligue 1', 'super liga', 'superliga',
+                'utakmica', 'rezultat', 'rezultati', 'raspored', 'danas', 'večeras', 'veceras'
+            ]
+            if any(k in txt for k in sports_markers):
+                return None
+
             qs = LessonLearned.objects.filter(lesson_text__icontains=user_input).order_by('-created_at')
             first = qs.first()
             if first:
@@ -811,6 +821,16 @@ class DeepSeekAPI(View):
 
     def save_lesson(self, user_input: str, ai_response: str, source: str = 'ai', user: str = '') -> None:
         try:
+            # Do not save sports Q/A into lessons to avoid contaminating factual sports answers
+            txt = (user_input or '').lower()
+            sports_markers = [
+                'liga sampiona', 'ucl', 'premier liga', 'epl', 'la liga', 'laliga',
+                'bundesliga', 'serie a', 'serija a', 'ligue 1', 'super liga', 'superliga',
+                'utakmica', 'rezultat', 'rezultati', 'raspored', 'danas', 'večeras', 'veceras'
+            ]
+            if any(k in txt for k in sports_markers):
+                return
+
             text = f"Q: {user_input}\nA: {ai_response}"
             LessonLearned.objects.create(lesson_text=text, source=source, user=user)
         except Exception as e:
