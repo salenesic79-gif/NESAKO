@@ -1,1 +1,1 @@
-web: sh -c "PY=$(if command -v python >/dev/null 2>&1; then echo python; else echo python3; fi); $PY manage.py collectstatic --noinput && exec $PY -m gunicorn wsgi:application --bind 0.0.0.0:${PORT:-8080}"
+web: sh -c "PY=$(if command -v python >/dev/null 2>&1; then echo python; else echo python3; fi); DJANGO_SETTINGS_MODULE=NESAKO.settings $PY -m django collectstatic --noinput && exec $PY -m gunicorn wsgi:application --bind 0.0.0.0:${PORT:-8080}"
