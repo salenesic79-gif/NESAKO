@@ -12,6 +12,9 @@ from ai_assistant.views import (
     manifest_view,
     get_unfinished_tasks,
     process_unfinished_tasks,
+    sports_verify,
+    sofa_competition,
+    sofa_quick,
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
@@ -45,6 +48,10 @@ urlpatterns = [
     path('manifest.json', manifest_view, name='manifest_json'),
     # Health endpoint
     path('health', health_view, name='health'),
+    # Sports endpoints (public JSON)
+    path('sports_verify', csrf_exempt(sports_verify), name='sports_verify'),
+    path('sofa_competition', csrf_exempt(sofa_competition), name='sofa_competition'),
+    path('sofa_quick', csrf_exempt(sofa_quick), name='sofa_quick'),
 ]
 
 # Serve static files in development
