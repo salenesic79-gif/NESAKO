@@ -1834,6 +1834,24 @@ def fudbal_quick_odds(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
+@csrf_exempt
+@require_http_methods(["GET"])
+def get_unfinished_tasks(request):
+    """Stub endpoint returning no pending tasks. Replace with real task queue if needed."""
+    try:
+        return JsonResponse({"tasks": []})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def process_unfinished_tasks(request):
+    """Stub processor acknowledging 0 processed tasks."""
+    try:
+        return JsonResponse({"processed": 0})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
 
 # --- SofaScore integrations (read-only JSON endpoints) ---
 @csrf_exempt
