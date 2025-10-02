@@ -34,6 +34,27 @@
             box-sizing: border-box;
         }
 
+        <!-- Mobile helpers: dismiss keyboard on phones -->
+        <script>
+        function isMobile() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+        function dismissMobileKeyboard() {
+            try {
+                const el = document.getElementById('user-input');
+                if (!el) return;
+                el.blur();
+                const tmp = document.createElement('input');
+                tmp.setAttribute('type', 'text');
+                tmp.style.position = 'absolute'; tmp.style.opacity = '0';
+                tmp.style.height = '0'; tmp.style.width = '0';
+                document.body.appendChild(tmp);
+                tmp.focus();
+                setTimeout(() => { tmp.blur(); document.body.removeChild(tmp); }, 0);
+            } catch (e) { /* noop */ }
+        }
+        </script>
+
         // --- Preferences sync with server ---
         async function loadPreferences() {
             try {
@@ -1814,69 +1835,25 @@ async function fetchAndShowSources(messageDiv, query, btn) {
                 return;
             }
             
-            if (data.status === 'success' || data.status === 'executing' || data.status === 'progress') {
-                if (data.status === 'progress') {
+            if (data && (data.status === 'success' || data.response || data.content || (data.raw && Array.isArray(data.raw.results)))) {
+                let msg = data.response || data.content || '';
                     updateProgress(data.progress || 5);
                     addMessage(data.response || '⏳ U toku...', false, { mode: 'progress' });
                 } else {
                     addMessage(data.response || 'Nema odgovora', false, {
                         mode: data.mode || 'definitivni_asistent',
-                        contextAware: data.context_aware || false,
-                        usedTools: data.tools_used || false
-                    });
-                    // Render quick follow-up actions to make chat feel more conversational
-                    try {
-                        let lastUserContent = '';
-                        for (let i = conversationHistory.length - 1; i >= 0; i--) {
-                            if (conversationHistory[i] && conversationHistory[i].isUser) {
-                                lastUserContent = conversationHistory[i].content || '';
-                                break;
-                            }
-                        }
-                        const messagesContainer = document.getElementById('chat-messages');
-                        const lastMsg = messagesContainer ? messagesContainer.lastElementChild : null;
-                        if (lastMsg && lastMsg.classList.contains('ai-message')) {
-                            renderQuickActions(lastMsg, lastUserContent);
-                        }
-                    } catch (e) { /* noop */ }
-                    // Auto-append sources only when backend used web synthesis
-                    if (data.used_web_synthesis === true) {
-                        try {
-                            let lastUserContent = '';
-                            for (let i = conversationHistory.length - 1; i >= 0; i--) {
-                                if (conversationHistory[i] && conversationHistory[i].isUser) {
-                                    lastUserContent = conversationHistory[i].content || '';
-                                    break;
-                                }
-                            }
-                            const messagesContainer = document.getElementById('chat-messages');
-                            const lastMsg = messagesContainer ? messagesContainer.lastElementChild : null;
-                            if (lastMsg && lastMsg.classList.contains('ai-message') && lastUserContent) {
-                                fetchAndShowSources(lastMsg, lastUserContent, null);
-                            }
-                        } catch (e) {
-                            console.warn('Auto-izvori greška:', e);
-                        }
-                    }
-                }
-                updateStatus('Spreman za rad', false);
+{{ ... }}
                 isTyping = false;
                 // Re-enable input
                 if (input) {
                     input.disabled = false;
                     input.value = '';
-                    try { updateCharCounter(); autoResize(); } catch (e) {}
-                    input.focus();
+                    updateStatus('Spreman za rad', false);
                 }
-                if (sendBtn) sendBtn.disabled = false;
-            } else {
-                console.log('Error response:', data.error);
-                addMessage(`Greška: ${data.error}`, false, { mode: 'error' });
-                updateStatus('Greška u obradi', false);
                 isTyping = false;
-                // Also re-enable input on error to avoid blocking UI
-                if (input) {
-                    input.disabled = false;
+                try {
+                    if (isMobile()) { dismissMobileKeyboard(); }
+                } catch (e) { /* noop */ }
                     input.focus();
                 }
                 if (sendBtn) sendBtn.disabled = false;

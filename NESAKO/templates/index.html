@@ -497,6 +497,32 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
+        // --- Mobile helpers: dismiss keyboard on phones ---
+        function isMobile() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        function dismissMobileKeyboard() {
+            try {
+                const el = document.getElementById('user-input');
+                if (!el) return;
+                el.blur();
+                // Create a temporary input to reliably remove focus on some mobile browsers
+                const tmp = document.createElement('input');
+                tmp.setAttribute('type', 'text');
+                tmp.style.position = 'absolute';
+                tmp.style.opacity = '0';
+                tmp.style.height = '0';
+                tmp.style.width = '0';
+                document.body.appendChild(tmp);
+                tmp.focus();
+                setTimeout(() => {
+                    tmp.blur();
+                    document.body.removeChild(tmp);
+                }, 0);
+            } catch (e) { /* noop */ }
+        }
+
         .image-paste-overlay {
             position: absolute;
             top: 0;

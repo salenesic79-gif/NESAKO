@@ -984,9 +984,18 @@ class DeepSeekAPI(View):
                 text_cmd = (user_input or '').strip().lower()
                 pending = bool(request.session.get('upgrade_pending', False))
 
+                # Detect self-modification style requests to avoid routing into sports handlers
+                try:
+                    self_mod_markers = ['implementiraj', 'izmeni', 'promeni', 'samopromena', 'self-modify', 'update code', 'change appearance']
+                    request.session['self_modify_active'] = any(
+                        text_cmd.startswith(m) or m in text_cmd for m in self_mod_markers
+                    )
+                except Exception:
+                    request.session['self_modify_active'] = False
+
                 # EARLY SHORT-CIRCUIT: sports quick intent for chat UI compatibility
                 try:
-                    if any(k in text_cmd for k in ['liga sampiona', 'ucl', 'premier liga', 'epl', 'la liga', 'laliga', 'bundesliga', 'serie a', 'serija a', 'ligue 1', 'super liga', 'superliga']):
+                    if (not bool(request.session.get('self_modify_active', False))) and any(k in text_cmd for k in ['liga sampiona', 'ucl', 'premier liga', 'epl', 'la liga', 'laliga', 'bundesliga', 'serie a', 'serija a', 'ligue 1', 'super liga', 'superliga']):
                         from .sports_aggregator import aggregate_verify
                         # Map keywords to keys
                         key = None
