@@ -2598,3 +2598,71 @@ async function fetchAndShowSources(messageDiv, query, btn) {
     </script>
 </body>
 </html>
+<script>
+// Runtime hotfix: define flags and wire self-modification without touching existing code
+window.selfModifyArmed = (typeof window.selfModifyArmed !== 'undefined') ? window.selfModifyArmed : false;
+window.autoApprovePlans = (typeof window.autoApprovePlans !== 'undefined') ? window.autoApprovePlans : false;
+
+// Safer header visibility (ensure navy applies regardless of cache)
+try { var hdr = document.querySelector('.header'); if (hdr) { hdr.style.background = '#102a44'; } } catch(e) {}
+
+// Arm self-mod from hamburger
+window.enableSelfModification = function() {
+  try { if (typeof closeHamburgerMenu === 'function') closeHamburgerMenu(); } catch(e) {}
+  window.selfModifyArmed = true;
+  window.autoApprovePlans = true;
+  try { if (typeof addMessage === 'function') addMessage(' Samopromena aktivirana! Sledeća poruka je INSTRUKCIJA i biće automatski izvršena.', false); } catch(e) {}
+};
+
+// Override sendMessage to execute self-mod immediately when armed
+(function(){
+  const original = window.sendMessage;
+  window.sendMessage = function(){
+    const el = document.getElementById('user-input');
+    const message = el ? (el.value || '').trim() : '';
+    if (!message) { if (typeof original === 'function') return original(); else return; }
+
+    if (window.selfModifyArmed) {
+      try { if (typeof addMessage === 'function') addMessage(message, true); } catch(e) {}
+      try { if (typeof updateStatus === 'function') updateStatus('Izvršavam samopromenu...', true); } catch(e) {}
+      fetch('/api/chat/', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          instruction: SAMOPROMENA: ,
+          conversation_history: (window.conversationHistory||[]),
+          allow_self_modification: true,
+          auto_execute: true,
+          confirmation_type: 'plan_autoapprove'
+        })
+      })
+      .then(r => r.json())
+      .then(d => { try { if (typeof handleApiResponse === 'function') handleApiResponse(d); } catch(e) {} })
+      .catch(() => { try { if (typeof addAIMessage === 'function') addAIMessage(' Greška pri samopromeni', false); if (typeof updateStatus === 'function') updateStatus('Greška', false); } catch(e) {} })
+      .finally(() => { window.selfModifyArmed = false; });
+      return;
+    }
+
+    const mods = ['promeni kod','izmeni izgled','sampromena','samopromena','self-modify','update code','change appearance'];
+    if (mods.some(k => message.toLowerCase().includes(k))) {
+      try { if (typeof addMessage === 'function') addMessage(message, true); } catch(e) {}
+      try { if (typeof updateStatus === 'function') updateStatus('Izvršavam samopromenu...', true); } catch(e) {}
+      fetch('/api/chat/', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          instruction: SAMOPROMENA: ,
+          conversation_history: (window.conversationHistory||[]),
+          allow_self_modification: true,
+          auto_execute: true,
+          confirmation_type: 'plan_autoapprove'
+        })
+      })
+      .then(r => r.json())
+      .then(d => { try { if (typeof handleApiResponse === 'function') handleApiResponse(d); } catch(e) {} })
+      .catch(() => { try { if (typeof addAIMessage === 'function') addAIMessage(' Greška pri samopromeni', false); if (typeof updateStatus === 'function') updateStatus('Greška', false); } catch(e) {} });
+      return;
+    }
+
+    if (typeof original === 'function') return original();
+  };
+})();
+</script>
