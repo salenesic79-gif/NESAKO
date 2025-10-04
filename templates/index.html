@@ -34,26 +34,7 @@
             box-sizing: border-box;
         }
 
-        <!-- Mobile helpers: dismiss keyboard on phones -->
-        <script>
-        function isMobile() {
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        }
-        function dismissMobileKeyboard() {
-            try {
-                const el = document.getElementById('user-input');
-                if (!el) return;
-                el.blur();
-                const tmp = document.createElement('input');
-                tmp.setAttribute('type', 'text');
-                tmp.style.position = 'absolute'; tmp.style.opacity = '0';
-                tmp.style.height = '0'; tmp.style.width = '0';
-                document.body.appendChild(tmp);
-                tmp.focus();
-                setTimeout(() => { tmp.blur(); document.body.removeChild(tmp); }, 0);
-            } catch (e) { /* noop */ }
-        }
-        </script>
+        /* Mobile helpers moved to script section below */
 
         // --- Preferences sync with server ---
         async function loadPreferences() {
@@ -1819,9 +1800,16 @@ async function fetchAndShowSources(messageDiv, query, btn) {
             }
             
             if (data.status === 'plan_created') {
-                showPlanApproval(data.plan);
-                addMessage(data.response, false, { mode: 'planning' });
-                return;
+                // Auto-approve plans when self-modification is armed
+                if (autoApprovePlans) {
+                    addMessage('✅ Plan automatski odobren (samopromena).', false, { mode: 'planning' });
+                    approvePlan();
+                    return;
+                } else {
+                    showPlanApproval(data.plan);
+                    addMessage(data.response, false, { mode: 'planning' });
+                    return;
+                }
             }
             
             if (data.status === 'executing') {
@@ -1852,10 +1840,12 @@ async function fetchAndShowSources(messageDiv, query, btn) {
                 }
                 isTyping = false;
                 try {
-                    if (isMobile()) { dismissMobileKeyboard(); }
+                    if (isMobile()) {
+                        dismissMobileKeyboard();
+                    } else if (input) {
+                        input.focus();
+                    }
                 } catch (e) { /* noop */ }
-                    input.focus();
-                }
                 if (sendBtn) sendBtn.disabled = false;
             }
         }
