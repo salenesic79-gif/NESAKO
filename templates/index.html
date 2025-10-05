@@ -1807,6 +1807,12 @@ async function fetchAndShowSources(messageDiv, query, btn) {
             if (data && (data.status === 'success' || data.response || data.content || (data.raw && Array.isArray(data.raw.results)))) {
                 const msg = data.response || data.content || 'Nema odgovora';
                 addMessage(msg, false, { mode: data.mode || 'definitivni_asistent' });
+                // If backend performed self-modification, reload to apply new template/styles
+                try {
+                    if ((data.mode === 'self_mod') && (data.status === 'success' || data.status === 'ok')) {
+                        setTimeout(() => { try { window.location.reload(); } catch(e){} }, 400);
+                    }
+                } catch(e){}
             } else {
                 addMessage('Nema odgovora', false);
             }

@@ -268,10 +268,11 @@ class DeepSeekAPI(View):
             if header_block:
                 block = header_block.group(1)
                 if re.search(r"background\s*:\s*[^;]+;", block):
-                    new_block = re.sub(r"background\s*:\s*[^;]+;", f"background: {color_hex};", block)
+                    # Replace all backgrounds with !important to ensure override
+                    new_block = re.sub(r"background\s*:\s*[^;]+;", f"background: {color_hex} !important;", block)
                 else:
-                    # Insert background at start of block
-                    new_block = re.sub(r"\{", "{\n    background: %s;" % color_hex, block, count=1)
+                    # Insert background at start of block with !important
+                    new_block = re.sub(r"\{", "{\n    background: %s !important;" % color_hex, block, count=1)
                 if new_block != block:
                     content = content.replace(block, new_block)
                     changed = True
@@ -1044,6 +1045,8 @@ class DeepSeekAPI(View):
                         'response': f"🛠️ Samopromena: {result.get('message')}",
                         'status': status,
                         'mode': 'self_mod',
+                        'color_hex': color_hex,
+                        'changed': bool(result.get('changed'))
                     })
                 else:
                     return JsonResponse({
