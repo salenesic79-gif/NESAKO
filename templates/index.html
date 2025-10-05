@@ -812,12 +812,14 @@
                             <button class="hamburger-item" onclick="clearChat()">🗑️ Obriši razgovor</button>
                             <button class="hamburger-item" onclick="exportChat()">💾 Izvezi razgovor</button>
                             <button class="hamburger-item" onclick="openSportsBetting()">⚽ Sportske prognoze</button>
+                            <button class="hamburger-item" onclick="openModules()">🧩 AI Moduli</button>
                             <button class="hamburger-item" onclick="showSettings()">⚙️ Podešavanja</button>
                             <button class="hamburger-item" onclick="enableSelfModification()">🔄 Samopromena</button>
                             <button class="hamburger-item" onclick="logout()">🚪 Logout</button>
                         </div>
                     </div>
                 </div>
+{{ ... }}
             </div>
         </div>
         
@@ -1596,6 +1598,95 @@ async function fetchAndShowSources(messageDiv, query, btn) {
             
             updateStatus('Čeka odobrenje plana', false);
             document.getElementById('statusIndicator').className = 'status-indicator planning';
+        }
+
+        // Export chat as TXT/JSON from DOM
+        function exportChat() {
+            try { closeHamburgerMenu(); } catch(e){}
+            const msgs = Array.from(document.querySelectorAll('.chat-window .message, .messages .message, .chat .message'));
+            const lines = msgs.map((el, i) => `${i+1}. ${el.innerText.replace(/\s+/g,' ').trim()}`);
+            const txt = lines.join('\n');
+            const blob = new Blob([txt], {type: 'text/plain;charset=utf-8'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `nesako_chat_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.txt`;
+            document.body.appendChild(a); a.click(); a.remove();
+            addMessage('💾 Razgovor izvezen (TXT).', false);
+        }
+
+        // Simple preferences panel using /api/preferences/
+        async function showSettings() {
+            try { closeHamburgerMenu(); } catch(e){}
+            try {
+                const res = await fetch('/api/preferences/', { method: 'GET' });
+                const data = await res.json();
+                const enabled = !!data.auto_modules_enabled;
+                const ok = confirm(`Auto modules enabled: ${enabled}\n\nKlikni OK da promeniš stanje.`);
+                if (!ok) return;
+                const post = await fetch('/api/preferences/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
+                    body: JSON.stringify({ auto_modules_enabled: !enabled })
+                });
+                const resp = await post.json();
+                addMessage(`⚙️ Podešavanja ažurirana: auto_modules_enabled=${resp.auto_modules_enabled}`, false);
+            } catch (e) {
+                addMessage(`Greška u podešavanjima: ${e}`, false);
+            }
+        }
+
+        // Modules UI: list and invoke
+        async function openModules() {
+            try { closeHamburgerMenu(); } catch(e){}
+            try {
+                const res = await fetch('/modules/manifest/');
+                const data = await res.json();
+                if (!data || !Array.isArray(data.modules) || data.modules.length === 0) {
+                    addMessage('🧩 Nema registrovanih modula. Koristi SAMOPROMENA: "kreiraj modul <ime> sa akcijama <a,b>".', false);
+                    return;
+                }
+                const parts = data.modules.map(m => `• ${m.module}: ${m.actions.join(', ')}`).join('\n');
+                addMessage(`🧩 Dostupni moduli:\n${parts}\n\nNapiši: pokreni modul <ime> akciju <naziv> ili klikni dugme ispod.`, false);
+                // Render quick buttons under last message
+                const container = document.createElement('div');
+                container.style.margin = '8px 0';
+                data.modules.forEach(m => {
+                    m.actions.forEach(a => {
+                        const btn = document.createElement('button');
+                        btn.className = 'secondary-btn';
+                        btn.style.margin = '4px';
+                        btn.textContent = `${m.module}/${a}`;
+                        btn.onclick = () => invokeModuleAction(m.module, a);
+                        container.appendChild(btn);
+                    });
+                });
+                const feed = document.querySelector('.messages') || document.querySelector('.chat-window') || document.body;
+                feed.appendChild(container);
+            } catch (e) {
+                addMessage(`Greška pri učitavanju modula: ${e}`, false);
+            }
+        }
+
+        async function invokeModuleAction(module, action) {
+            try {
+                const res = await fetch(`/modules/${encodeURIComponent(module)}/${encodeURIComponent(action)}/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
+                    body: JSON.stringify({
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                const data = await res.json();
+                addMessage(`🧩 ${module}/${action}: ${JSON.stringify(data).slice(0,1200)}`, false);
+            } catch (e) {
+                addMessage(`Greška pri izvršavanju modula: ${e}`, false);
+            }
+        }
+
+        // Placeholder for sports betting panel (can be extended)
+        function openSportsBetting() {
+            try { closeHamburgerMenu(); } catch(e){}
+            addMessage('⚽ Sportske: koristi /api/sofa/quick ili napiši zahtev, npr. "donesi raspored za Premier League".', false);
         }
         
         function approvePlan() {

@@ -362,6 +362,87 @@ class DeepSeekAPI(View):
         except Exception as e:
             return JsonResponse({'status': 'error', 'error': str(e)})
 
+    # === NL SelfMod Interpreter (v1) ===
+    def _apply_css_property(self, selector: str, prop: str, value: str) -> Dict[str, Any]:
+        """Set a CSS property in templates/index.html for a simple class/id/tag selector.
+        If a style block exists for the selector, overwrite or add the property. Otherwise inject a new style rule.
+        """
+        try:
+            tpl_path = Path(settings.BASE_DIR) / 'templates' / 'index.html'
+            content = tpl_path.read_text(encoding='utf-8')
+            original = content
+            import re
+            # Normalize selector to CSS
+            sel = selector.strip()
+            # Find existing block
+            pattern = rf"({re.escape(sel)}\s*\{{[\s\S]*?\}})"
+            m = re.search(pattern, content)
+            changed = False
+            if m:
+                block = m.group(1)
+                # property regex
+                if re.search(rf"{re.escape(prop)}\s*:\s*[^;]+;", block):
+                    new_block = re.sub(rf"{re.escape(prop)}\s*:\s*[^;]+;", f"{prop}: {value} !important;", block)
+                else:
+                    new_block = re.sub(r"\{", "{\n    %s: %s !important;" % (prop, value), block, count=1)
+                if new_block != block:
+                    content = content.replace(block, new_block)
+                    changed = True
+            else:
+                inject = f"\n<style>\n  {sel} {{ {prop}: {value} !important; }}\n</style>\n"
+                content = content.replace('</body>', inject + '</body>')
+                changed = True
+            if changed and content != original:
+                # Backup
+                try:
+                    tpl_path.with_suffix('.bak').write_text(original, encoding='utf-8')
+                except Exception:
+                    pass
+                tpl_path.write_text(content, encoding='utf-8')
+                return {'changed': True, 'message': f"Postavljeno {prop}='{value}' na {sel}"}
+            return {'changed': False, 'message': 'Nema promena'}
+        except Exception as e:
+            return {'changed': False, 'message': f'Greška CSS izmena: {str(e)}'}
+
+    def _insert_html_near(self, where: str, selector: str, html_snippet: str) -> Dict[str, Any]:
+        """Insert simple HTML before/after/into first match of selector in templates/index.html using BeautifulSoup.
+        where: before|after|into
+        selector: simple .class, #id, or tag
+        """
+        try:
+            tpl_path = Path(settings.BASE_DIR) / 'templates' / 'index.html'
+            text = tpl_path.read_text(encoding='utf-8')
+            original = text
+            soup = BeautifulSoup(text, 'html.parser')
+            # resolve selector
+            target = None
+            if selector.startswith('#'):
+                target = soup.select_one(selector)
+            elif selector.startswith('.'):
+                target = soup.select_one(selector)
+            else:
+                target = soup.find(selector)
+            if not target:
+                return {'changed': False, 'message': f'Nije pronađen selektor {selector}'}
+            frag = BeautifulSoup(html_snippet, 'html.parser')
+            if where == 'into':
+                target.append(frag)
+            elif where == 'before':
+                target.insert_before(frag)
+            else:
+                target.insert_after(frag)
+            new_text = str(soup)
+            if new_text != original:
+                try:
+                    tpl_path.with_suffix('.bak').write_text(original, encoding='utf-8')
+                except Exception:
+                    pass
+                tpl_path.write_text(new_text, encoding='utf-8')
+                return {'changed': True, 'message': f'Umetnut HTML ({where}) uz {selector}'}
+            return {'changed': False, 'message': 'Nema promena'}
+        except Exception as e:
+            return {'changed': False, 'message': f'Greška HTML umetanja: {str(e)}'}
+
     def _auto_git_push(self, message: str) -> Dict[str, Any]:
         """Attempt to git add/commit/push changes. Safe no-op on failure.
         Returns {ok: bool, log: str}."""
@@ -1178,18 +1259,37 @@ class DeepSeekAPI(View):
                         'auto_push_log': push.get('log'),
                         'error': res.get('error')
                     })
+                # Generic NL intents: CSS set and HTML insert
+                # Primers: "postavi css .header background #222", "dodaj html posle .header '<div>Hi</div>'"
+                try:
+                    import re
+                    mcss = re.search(r"postavi\s+css\s+(#[\w-]+|\.[\w-]+|[a-zA-Z][\w-]*)\s+([a-zA-Z-]+)\s+(.+)$", payload, re.IGNORECASE)
+                    if mcss:
+                        sel, prop, val = mcss.group(1), mcss.group(2), mcss.group(3).strip()
+                        res = self._apply_css_property(sel, prop, val)
+                        push = {'ok': False, 'log': ''}
+                        if res.get('changed'):
+                            push = self._auto_git_push(f"chore(self-mod): css set {sel} {prop} -> {val}")
+                        return JsonResponse({'status': 'success' if res.get('changed') else 'ok', 'mode': 'self_mod', 'response': res.get('message'), 'auto_push': push.get('ok'), 'auto_push_log': push.get('log')})
+                    minsert = re.search(r"(dodaj|umetni)\s+html\s+(pre|posle|u|into)\s+(#[\w-]+|\.[\w-]+|[a-zA-Z][\w-]*)\s+(.+)$", payload, re.IGNORECASE)
+                    if minsert:
+                        where_map = {'pre': 'before', 'posle': 'after', 'u': 'into', 'into': 'into'}
+                        where = where_map.get(minsert.group(2).lower(), 'after')
+                        sel = minsert.group(3)
+                        snippet = minsert.group(4).strip()
+                        res = self._insert_html_near(where, sel, snippet)
+                        push = {'ok': False, 'log': ''}
+                        if res.get('changed'):
+                            push = self._auto_git_push(f"feat(self-mod): insert html {where} {sel}")
+                        return JsonResponse({'status': 'success' if res.get('changed') else 'ok', 'mode': 'self_mod', 'response': res.get('message'), 'auto_push': push.get('ok'), 'auto_push_log': push.get('log')})
+                except Exception:
+                    pass
                 # Help for SAMOPROMENA
                 return JsonResponse({
                     'status': 'ok',
                     'mode': 'self_mod_help',
-                    'response': 'SAMOPROMENA podržava: 1) promeni heder u <boja/#hex>; 2) kreiraj modul <ime> sa akcijama <a,b,c>.',
+                    'response': 'SAMOPROMENA podržava: 1) promeni heder u <boja/#hex>; 2) kreiraj modul <ime> sa akcijama <a,b,c>; 3) postavi css <selektor> <svojstvo> <vrednost>; 4) dodaj html <pre|posle|u> <selektor> <html>.',
                 })
-                else:
-                    return JsonResponse({
-                        'response': 'Samopromena je aktivna, ali nisam prepoznao komandu ili boju za heder. Pokušaj npr: "promeni heder u #ffa500" ili "promeni heder boju u narandžasto".',
-                        'status': 'ok',
-                        'mode': 'self_mod_help'
-                    })
             
             # Security threat detection - SAMO za kritične pretnje
             security_warnings = self.detect_critical_threats(user_input)
