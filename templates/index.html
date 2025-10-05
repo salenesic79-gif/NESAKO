@@ -1749,6 +1749,20 @@ async function fetchAndShowSources(messageDiv, query, btn) {
             loading.style.display = 'none';
             const input = document.getElementById('user-input');
             const sendBtn = document.getElementById('send-btn');
+            const cleanup = () => {
+                try { loading.style.display = 'none'; } catch(e) {}
+                try { if (input) { input.disabled = false; } } catch(e) {}
+                try { if (sendBtn) { sendBtn.disabled = false; } } catch(e) {}
+                try { isTyping = false; } catch(e) {}
+                try {
+                    if (isMobile()) {
+                        dismissMobileKeyboard();
+                    } else if (input) {
+                        input.focus();
+                    }
+                } catch (e) { /* noop */ }
+                try { if (typeof updateStatus === 'function') updateStatus('Spreman za rad', false); } catch(e) {}
+            };
             
             // Handle authentication errors
             if (data.status === 'unauthorized') {
@@ -1758,6 +1772,7 @@ async function fetchAndShowSources(messageDiv, query, btn) {
             
             if (data.status === 'security_warning') {
                 showSecurityWarning(data.response);
+                cleanup();
                 return;
             }
             
@@ -1766,10 +1781,12 @@ async function fetchAndShowSources(messageDiv, query, btn) {
                 if (autoApprovePlans) {
                     addMessage('✅ Plan automatski odobren (samopromena).', false, { mode: 'planning' });
                     approvePlan();
+                    cleanup();
                     return;
                 } else {
                     showPlanApproval(data.plan);
                     addMessage(data.response, false, { mode: 'planning' });
+                    cleanup();
                     return;
                 }
             }
@@ -1777,11 +1794,13 @@ async function fetchAndShowSources(messageDiv, query, btn) {
             if (data.status === 'executing') {
                 showProgressTracker(data.task_id, data.response);
                 addMessage(data.response, false, { mode: 'executing' });
+                cleanup();
                 return;
             }
             
             if (data.status === 'progress') {
                 updateProgress(typeof data.progress === 'number' ? data.progress : 0);
+                cleanup();
                 return;
             }
 
@@ -1791,16 +1810,7 @@ async function fetchAndShowSources(messageDiv, query, btn) {
             } else {
                 addMessage('Nema odgovora', false);
             }
-
-            isTyping = false;
-            try {
-                if (isMobile()) {
-                    dismissMobileKeyboard();
-                } else if (input) {
-                    input.focus();
-                }
-            } catch (e) { /* noop */ }
-            if (sendBtn) sendBtn.disabled = false;
+            cleanup();
         }
         
         // Logout function

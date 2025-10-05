@@ -212,6 +212,82 @@ class DeepSeekAPI(View):
                 'status': 'unauthorized'
             }, status=401)
         return super().dispatch(request, *args, **kwargs)
+
+    # === Minimal Self-Modification Executor ===
+    def _color_to_hex(self, text: str) -> Optional[str]:
+        try:
+            text = (text or '').strip().lower()
+            # Direct hex like #ffa500
+            m = re.search(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})", text)
+            if m:
+                val = m.group(0)
+                if len(val) == 4:  # #abc -> #aabbcc
+                    val = '#' + ''.join([c*2 for c in val[1:]])
+                return val.lower()
+            # Simple SR/EN color names map
+            name_map = {
+                'narandzasto': '#ffa500', 'narandžasto': '#ffa500', 'orange': '#ffa500',
+                'plavo': '#1e90ff', 'blue': '#1e90ff',
+                'zeleno': '#28a745', 'zelena': '#28a745', 'green': '#28a745',
+                'crveno': '#dc3545', 'red': '#dc3545',
+                'ljubicasto': '#6f42c1', 'ljubičasto': '#6f42c1', 'purple': '#6f42c1',
+                'crno': '#101010', 'black': '#000000',
+                'belo': '#ffffff', 'bela': '#ffffff', 'white': '#ffffff'
+            }
+            for k, v in name_map.items():
+                if k in text:
+                    return v
+        except Exception:
+            pass
+        return None
+
+    def _apply_header_color(self, color_hex: str) -> Dict[str, Any]:
+        """Safely change header background color in templates/index.html.
+        Returns dict with keys: changed(bool), message(str).
+        """
+        try:
+            tpl_path = Path(settings.BASE_DIR) / 'templates' / 'index.html'
+            if not tpl_path.exists():
+                return {'changed': False, 'message': f'Fajl nije pronađen: {tpl_path}'}
+
+            content = tpl_path.read_text(encoding='utf-8')
+            original = content
+
+            # Backup
+            backup_path = tpl_path.with_suffix('.bak')
+            try:
+                backup_path.write_text(original, encoding='utf-8')
+            except Exception:
+                pass
+
+            # Try to update background inside .header { ... }
+            # Regex to find the .header CSS block and its background property
+            # 1) Ensure we operate only inside the first .header block
+            header_block = re.search(r"(\.header\s*\{[\s\S]*?\})", content)
+            changed = False
+            if header_block:
+                block = header_block.group(1)
+                if re.search(r"background\s*:\s*[^;]+;", block):
+                    new_block = re.sub(r"background\s*:\s*[^;]+;", f"background: {color_hex};", block)
+                else:
+                    # Insert background at start of block
+                    new_block = re.sub(r"\{", "{\n    background: %s;" % color_hex, block, count=1)
+                if new_block != block:
+                    content = content.replace(block, new_block)
+                    changed = True
+
+            # If not changed, append a style override near the end before </body>
+            if not changed:
+                inject = f"\n<style>\n  .header {{ background: {color_hex} !important; }}\n</style>\n"
+                content = content.replace('</body>', inject + '</body>')
+                changed = True
+
+            if changed and content != original:
+                tpl_path.write_text(content, encoding='utf-8')
+                return {'changed': True, 'message': f'Boja hedera postavljena na {color_hex}.'}
+            return {'changed': False, 'message': 'Nije bilo promena (već je postavljeno?).'}
+        except Exception as e:
+            return {'changed': False, 'message': f'Greška pri izmeni fajla: {str(e)}'}
     def get_github_content(self, repo_url, path=""):
         """Tool: Pristup GitHub repozitorijumu za analizu koda"""
         try:
@@ -952,6 +1028,29 @@ class DeepSeekAPI(View):
                     'status': 'error',
                     'response': 'Molim unesite vašu poruku ili pitanje.'
                 }, status=400)
+
+            # Self-modification short-circuit (minimal executor)
+            if user_input.strip().upper().startswith('SAMOPROMENA:'):
+                try:
+                    payload = user_input.split(':', 1)[1].strip()
+                except Exception:
+                    payload = ''
+                # Parse color intent for header
+                color_hex = self._color_to_hex(payload)
+                if any(k in payload.lower() for k in ['heder', 'header']) and color_hex:
+                    result = self._apply_header_color(color_hex)
+                    status = 'success' if result.get('changed') else 'ok'
+                    return JsonResponse({
+                        'response': f"🛠️ Samopromena: {result.get('message')}",
+                        'status': status,
+                        'mode': 'self_mod',
+                    })
+                else:
+                    return JsonResponse({
+                        'response': 'Samopromena je aktivna, ali nisam prepoznao komandu ili boju za heder. Pokušaj npr: "promeni heder u #ffa500" ili "promeni heder boju u narandžasto".',
+                        'status': 'ok',
+                        'mode': 'self_mod_help'
+                    })
             
             # Security threat detection - SAMO za kritične pretnje
             security_warnings = self.detect_critical_threats(user_input)
