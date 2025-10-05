@@ -2574,6 +2574,11 @@ window.enableSelfModification = function() {
     if (!message) { if (typeof original === 'function') return original(); else return; }
 
     if (window.selfModifyArmed) {
+      // UI disable
+      const sendBtn = document.getElementById('send-btn');
+      if (el) el.disabled = true;
+      if (sendBtn) sendBtn.disabled = true;
+      window.isTyping = true;
       try { if (typeof addMessage === 'function') addMessage(message, true); } catch(e) {}
       try { if (typeof updateStatus === 'function') updateStatus('Izvršavam samopromenu...', true); } catch(e) {}
       fetch('/api/chat/', {
@@ -2589,12 +2594,23 @@ window.enableSelfModification = function() {
       .then(r => r.json())
       .then(d => { try { if (typeof handleApiResponse === 'function') handleApiResponse(d); } catch(e) {} })
       .catch(() => { try { if (typeof addAIMessage === 'function') addAIMessage('❌ Greška pri samopromeni', false); if (typeof updateStatus === 'function') updateStatus('Greška', false); } catch(e) {} })
-      .finally(() => { window.selfModifyArmed = false; });
+      .finally(() => {
+        window.selfModifyArmed = false;
+        window.isTyping = false;
+        try { if (el) { el.disabled = false; el.value = ''; el.focus(); } } catch(e) {}
+        try { const sendBtn2 = document.getElementById('send-btn'); if (sendBtn2) sendBtn2.disabled = false; } catch(e) {}
+        try { if (typeof updateStatus === 'function') updateStatus('Spreman za rad', false); } catch(e) {}
+      });
       return;
     }
 
     const mods = ['promeni kod','izmeni izgled','sampromena','samopromena','self-modify','update code','change appearance'];
     if (mods.some(k => message.toLowerCase().includes(k))) {
+      // UI disable
+      const sendBtn = document.getElementById('send-btn');
+      if (el) el.disabled = true;
+      if (sendBtn) sendBtn.disabled = true;
+      window.isTyping = true;
       try { if (typeof addMessage === 'function') addMessage(message, true); } catch(e) {}
       try { if (typeof updateStatus === 'function') updateStatus('Izvršavam samopromenu...', true); } catch(e) {}
       fetch('/api/chat/', {
@@ -2609,13 +2625,19 @@ window.enableSelfModification = function() {
       })
       .then(r => r.json())
       .then(d => { try { if (typeof handleApiResponse === 'function') handleApiResponse(d); } catch(e) {} })
-      .catch(() => { try { if (typeof addAIMessage === 'function') addAIMessage('❌ Greška pri samopromeni', false); if (typeof updateStatus === 'function') updateStatus('Greška', false); } catch(e) {} });
+      .catch(() => { try { if (typeof addAIMessage === 'function') addAIMessage('❌ Greška pri samopromeni', false); if (typeof updateStatus === 'function') updateStatus('Greška', false); } catch(e) {} })
+      .finally(() => {
+        window.isTyping = false;
+        try { if (el) { el.disabled = false; el.value = ''; el.focus(); } } catch(e) {}
+        try { const sendBtn2 = document.getElementById('send-btn'); if (sendBtn2) sendBtn2.disabled = false; } catch(e) {}
+        try { if (typeof updateStatus === 'function') updateStatus('Spreman za rad', false); } catch(e) {}
+      });
       return;
     }
 
     if (typeof original === 'function') return original();
   };
-})();
-</script>
-</body>
-</html>
+  })();
+  </script>
+  </body>
+  </html>
