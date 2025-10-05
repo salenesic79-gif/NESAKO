@@ -3464,6 +3464,10 @@ class LoginView(View):
         username = ''
         password = ''
         try:
+            is_json = bool(request.content_type and 'application/json' in request.content_type)
+            hdr_xrw = (request.headers.get('X-Requested-With') or '').lower()
+            hdr_accept = (request.headers.get('Accept') or '').lower()
+            wants_json = is_json or hdr_xrw == 'xmlhttprequest' or 'application/json' in hdr_accept
             if request.content_type and 'application/json' in request.content_type:
                 try:
                     data = json.loads(request.body or '{}')
@@ -3477,9 +3481,14 @@ class LoginView(View):
 
             if username == 'nesako' and password == 'nesako2024':
                 request.session['authenticated'] = True
-                return JsonResponse({'success': True, 'redirect': '/'})
+                if wants_json:
+                    return JsonResponse({'success': True, 'redirect': '/'})
+                # Non-AJAX form submit → do a proper browser redirect
+                return redirect('/')
             else:
-                return JsonResponse({'success': False, 'error': 'Pogrešno korisničko ime ili lozinka.'}, status=401)
+                if wants_json:
+                    return JsonResponse({'success': False, 'error': 'Pogrešno korisničko ime ili lozinka.'}, status=401)
+                return redirect('/login/')
         except Exception as e:
             return JsonResponse({'success': False, 'error': f'Greška: {str(e)}'}, status=500)
 
