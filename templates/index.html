@@ -35,43 +35,6 @@
         }
 
         /* Mobile helpers moved to script section below */
-
-        // --- Preferences sync with server ---
-        async function loadPreferences() {
-            try {
-                const res = await fetch('/api/preferences/', { credentials: 'same-origin' });
-                if (res.ok) {
-                    const data = await res.json();
-                    autoModulesEnabled = !!data.auto_modules_enabled;
-                }
-            } catch (e) { /* ignore */ }
-            const toggle = document.getElementById('auto-modules-toggle');
-            if (toggle) {
-                toggle.checked = !!autoModulesEnabled;
-            }
-        }
-
-        async function savePreferences(enabled) {
-            try {
-                await fetch('/api/preferences/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ auto_modules_enabled: !!enabled }),
-                    credentials: 'same-origin'
-                });
-            } catch (e) { /* ignore */ }
-        }
-
-        window.addEventListener('DOMContentLoaded', () => {
-            loadPreferences();
-            const toggle = document.getElementById('auto-modules-toggle');
-            if (toggle) {
-                toggle.addEventListener('change', (e) => {
-                    autoModulesEnabled = !!e.target.checked;
-                    savePreferences(autoModulesEnabled);
-                });
-            }
-        });
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -109,7 +72,6 @@
             display: flex;
             align-items: center;
             gap: 15px;
-{{ ... }}
         }
         
         .header-center {
@@ -1819,35 +1781,26 @@ async function fetchAndShowSources(messageDiv, query, btn) {
             }
             
             if (data.status === 'progress') {
-                updateProgress(data.progress);
+                updateProgress(typeof data.progress === 'number' ? data.progress : 0);
                 return;
             }
-            
+
             if (data && (data.status === 'success' || data.response || data.content || (data.raw && Array.isArray(data.raw.results)))) {
-                let msg = data.response || data.content || '';
-                    updateProgress(data.progress || 5);
-                    addMessage(data.response || '⏳ U toku...', false, { mode: 'progress' });
-                } else {
-                    addMessage(data.response || 'Nema odgovora', false, {
-                        mode: data.mode || 'definitivni_asistent',
-{{ ... }}
-                isTyping = false;
-                // Re-enable input
-                if (input) {
-                    input.disabled = false;
-                    input.value = '';
-                    updateStatus('Spreman za rad', false);
-                }
-                isTyping = false;
-                try {
-                    if (isMobile()) {
-                        dismissMobileKeyboard();
-                    } else if (input) {
-                        input.focus();
-                    }
-                } catch (e) { /* noop */ }
-                if (sendBtn) sendBtn.disabled = false;
+                const msg = data.response || data.content || 'Nema odgovora';
+                addMessage(msg, false, { mode: data.mode || 'definitivni_asistent' });
+            } else {
+                addMessage('Nema odgovora', false);
             }
+
+            isTyping = false;
+            try {
+                if (isMobile()) {
+                    dismissMobileKeyboard();
+                } else if (input) {
+                    input.focus();
+                }
+            } catch (e) { /* noop */ }
+            if (sendBtn) sendBtn.disabled = false;
         }
         
         // Logout function
