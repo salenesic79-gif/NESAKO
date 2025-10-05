@@ -443,6 +443,114 @@ class DeepSeekAPI(View):
         except Exception as e:
             return {'changed': False, 'message': f'Greška HTML umetanja: {str(e)}'}
 
+    # === Advanced file editing helpers ===
+    def _safe_path(self, rel_path: str) -> Optional[Path]:
+        try:
+            rel_path = (rel_path or '').strip().lstrip('/\\')
+            base = Path(settings.BASE_DIR)
+            target = (base / rel_path).resolve()
+            if base in target.parents or target == base:
+                # Limit to known directories/files for safety
+                allowed = [
+                    base / 'templates' / 'index.html',
+                    base / 'settings.py',
+                    *(base / 'ai_assistant').glob('**/*.py'),
+                    *(base / 'plugins').glob('**/*.py'),
+                ]
+                for p in allowed:
+                    try:
+                        if p.resolve() == target:
+                            return target
+                    except Exception:
+                        continue
+            return None
+        except Exception:
+            return None
+
+    def _diff_text(self, old: str, new: str, path: str) -> str:
+        import difflib
+        diff = difflib.unified_diff(
+            old.splitlines(True), new.splitlines(True),
+            fromfile=f"a/{path}", tofile=f"b/{path}")
+        return ''.join(diff)[:5000]
+
+    def _validate_python(self, path: Path, content: str) -> Optional[str]:
+        try:
+            import ast
+            if path.suffix != '.py':
+                return None
+            ast.parse(content)
+            return None
+        except Exception as e:
+            return str(e)
+
+    def _replace_in_file(self, rel_path: str, old: str, new: str) -> Dict[str, Any]:
+        path = self._safe_path(rel_path)
+        if not path or not path.exists():
+            return {'changed': False, 'message': f'Fajl nije dozvoljen ili ne postoji: {rel_path}'}
+        text = path.read_text(encoding='utf-8')
+        if old not in text:
+            return {'changed': False, 'message': 'Tekst za zamenu nije pronađen.'}
+        updated = text.replace(old, new)
+        err = self._validate_python(path, updated)
+        if err:
+            return {'changed': False, 'message': f'Python validacija neuspešna: {err}'}
+        # Backup and write
+        try:
+            path.with_suffix(path.suffix + '.bak').write_text(text, encoding='utf-8')
+        except Exception:
+            pass
+        path.write_text(updated, encoding='utf-8')
+        return {'changed': True, 'message': 'Zamena izvršena.', 'diff': self._diff_text(text, updated, rel_path)}
+
+    def _append_to_file(self, rel_path: str, snippet: str) -> Dict[str, Any]:
+        path = self._safe_path(rel_path)
+        if not path or not path.exists():
+            return {'changed': False, 'message': f'Fajl nije dozvoljen ili ne postoji: {rel_path}'}
+        old = path.read_text(encoding='utf-8')
+        new = old + ('' if old.endswith('\n') else '\n') + snippet + ('\n' if not snippet.endswith('\n') else '')
+        err = self._validate_python(path, new)
+        if err:
+            return {'changed': False, 'message': f'Python validacija neuspešna: {err}'}
+        try:
+            path.with_suffix(path.suffix + '.bak').write_text(old, encoding='utf-8')
+        except Exception:
+            pass
+        path.write_text(new, encoding='utf-8')
+        return {'changed': True, 'message': 'Tekst dodat na kraj fajla.', 'diff': self._diff_text(old, new, rel_path)}
+
+    def _insert_import(self, rel_path: str, import_line: str) -> Dict[str, Any]:
+        path = self._safe_path(rel_path)
+        if not path or not path.exists():
+            return {'changed': False, 'message': f'Fajl nije dozvoljen ili ne postoji: {rel_path}'}
+        old = path.read_text(encoding='utf-8')
+        lines = old.splitlines()
+        # Insert import after shebang/encoding and before other code
+        inserted = False
+        new_lines = []
+        for i, ln in enumerate(lines):
+            new_lines.append(ln)
+            if not inserted and ln.strip().startswith('from') or ln.strip().startswith('import'):
+                # check duplicate
+                if import_line.strip() in old:
+                    return {'changed': False, 'message': 'Import već postoji.'}
+                new_lines.insert(len(new_lines)-1, import_line)
+                inserted = True
+                break
+        if not inserted:
+            # prepend at top
+            new_lines = [import_line] + ([''] if lines and lines[0].strip() else []) + lines
+        new = '\n'.join(new_lines)
+        err = self._validate_python(path, new)
+        if err:
+            return {'changed': False, 'message': f'Python validacija neuspešna: {err}'}
+        try:
+            path.with_suffix(path.suffix + '.bak').write_text(old, encoding='utf-8')
+        except Exception:
+            pass
+        path.write_text(new, encoding='utf-8')
+        return {'changed': True, 'message': 'Import dodat.', 'diff': self._diff_text(old, new, rel_path)}
+
     def _auto_git_push(self, message: str) -> Dict[str, Any]:
         """Attempt to git add/commit/push changes. Safe no-op on failure.
         Returns {ok: bool, log: str}."""
@@ -1282,13 +1390,46 @@ class DeepSeekAPI(View):
                         if res.get('changed'):
                             push = self._auto_git_push(f"feat(self-mod): insert html {where} {sel}")
                         return JsonResponse({'status': 'success' if res.get('changed') else 'ok', 'mode': 'self_mod', 'response': res.get('message'), 'auto_push': push.get('ok'), 'auto_push_log': push.get('log')})
+                    # Replace text in file
+                    mrep = re.search(r"zameni\s+u\s+([^\s]+)\s+\"([\s\S]+?)\"\s+sa\s+\"([\s\S]+?)\"$", payload, re.IGNORECASE)
+                    if mrep:
+                        rel = mrep.group(1)
+                        old = mrep.group(2)
+                        newv = mrep.group(3)
+                        res = self._replace_in_file(rel, old, newv)
+                        push = {'ok': False, 'log': ''}
+                        if res.get('changed'):
+                            push = self._auto_git_push(f"chore(self-mod): replace in {rel}")
+                        return JsonResponse({'status': 'success' if res.get('changed') else 'ok', 'mode': 'self_mod', 'response': res.get('message'), 'diff': res.get('diff'), 'auto_push': push.get('ok'), 'auto_push_log': push.get('log')})
+                    # Append text at end of file
+                    madd = re.search(r"dodaj\s+na\s+kraj\s+([^\s]+)\s+\"([\s\S]+)\"$", payload, re.IGNORECASE)
+                    if madd:
+                        rel = madd.group(1)
+                        snippet = madd.group(2)
+                        res = self._append_to_file(rel, snippet)
+                        push = {'ok': False, 'log': ''}
+                        if res.get('changed'):
+                            push = self._auto_git_push(f"feat(self-mod): append in {rel}")
+                        return JsonResponse({'status': 'success' if res.get('changed') else 'ok', 'mode': 'self_mod', 'response': res.get('message'), 'diff': res.get('diff'), 'auto_push': push.get('ok'), 'auto_push_log': push.get('log')})
+                    # Insert import into python file
+                    mimp = re.search(r"dodaj\s+import\s+(.+?)\s+u\s+([^\s]+)$", payload, re.IGNORECASE)
+                    if mimp:
+                        import_line = mimp.group(1).strip()
+                        rel = mimp.group(2)
+                        if not import_line.lower().startswith(('import ', 'from ')):
+                            import_line = 'import ' + import_line
+                        res = self._insert_import(rel, import_line)
+                        push = {'ok': False, 'log': ''}
+                        if res.get('changed'):
+                            push = self._auto_git_push(f"feat(self-mod): insert import in {rel}")
+                        return JsonResponse({'status': 'success' if res.get('changed') else 'ok', 'mode': 'self_mod', 'response': res.get('message'), 'diff': res.get('diff'), 'auto_push': push.get('ok'), 'auto_push_log': push.get('log')})
                 except Exception:
                     pass
                 # Help for SAMOPROMENA
                 return JsonResponse({
                     'status': 'ok',
                     'mode': 'self_mod_help',
-                    'response': 'SAMOPROMENA podržava: 1) promeni heder u <boja/#hex>; 2) kreiraj modul <ime> sa akcijama <a,b,c>; 3) postavi css <selektor> <svojstvo> <vrednost>; 4) dodaj html <pre|posle|u> <selektor> <html>.',
+                    'response': 'SAMOPROMENA podržava: (1) promeni heder u <boja/#hex>; (2) kreiraj modul <ime> sa akcijama <a,b,c>; (3) postavi css <selektor> <svojstvo> <vrednost>; (4) dodaj html <pre|posle|u> <selektor> <html>; (5) zameni u <putanja> "staro" sa "novo"; (6) dodaj import <linija> u <putanja>; (7) dodaj na kraj <putanja> "tekst".',
                 })
             
             # Security threat detection - SAMO za kritične pretnje
@@ -2318,6 +2459,158 @@ def preferences_view(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+# ===== GitHub Advanced Endpoints =====
+@csrf_exempt
+@require_http_methods(["POST"])
+def github_create_branch(request):
+    try:
+        import os, base64, json
+        data = json.loads(request.body or '{}')
+        repo = data.get('repo', '')  # owner/repo or full URL
+        base = data.get('base', 'main')
+        new_branch = data.get('branch')
+        if not repo or not new_branch:
+            return JsonResponse({'error': 'Missing repo or branch'}, status=400)
+        # Parse repo
+        if repo.startswith('http'):
+            parts = repo.rstrip('/').split('/')[-2:]
+            owner, name = parts[0], parts[1].replace('.git','')
+        else:
+            owner, name = repo.split('/')
+        token = os.getenv('GITHUB_TOKEN')
+        if not token:
+            return JsonResponse({'error': 'GITHUB_TOKEN not configured'}, status=400)
+        headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json'}
+        # Get base ref sha
+        r = requests.get(f'https://api.github.com/repos/{owner}/{name}/git/ref/heads/{base}', headers=headers, timeout=20)
+        if r.status_code != 200:
+            return JsonResponse({'error': 'Base branch not found', 'detail': r.text}, status=r.status_code)
+        base_sha = r.json()['object']['sha']
+        # Create new ref
+        payload = {'ref': f'refs/heads/{new_branch}', 'sha': base_sha}
+        r2 = requests.post(f'https://api.github.com/repos/{owner}/{name}/git/refs', headers=headers, json=payload, timeout=20)
+        if r2.status_code in (200,201):
+            return JsonResponse({'status': 'success', 'branch': new_branch, 'base': base})
+        return JsonResponse({'error': 'Failed to create branch', 'detail': r2.text}, status=r2.status_code)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def github_commit_file(request):
+    """Create or update a file via GitHub Contents API on a branch.
+    Body: {repo, branch, path, content_base64, message}
+    """
+    try:
+        import os, json
+        data = json.loads(request.body or '{}')
+        repo = data.get('repo','')
+        branch = data.get('branch','main')
+        path = data.get('path')
+        content_b64 = data.get('content_base64')
+        message = data.get('message','update via API')
+        if not (repo and path and content_b64):
+            return JsonResponse({'error':'Missing repo/path/content_base64'}, status=400)
+        if repo.startswith('http'):
+            parts = repo.rstrip('/').split('/')[-2:]
+            owner, name = parts[0], parts[1].replace('.git','')
+        else:
+            owner, name = repo.split('/')
+        token = os.getenv('GITHUB_TOKEN')
+        if not token:
+            return JsonResponse({'error': 'GITHUB_TOKEN not configured'}, status=400)
+        headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json'}
+        # Check if file exists to get sha
+        get_url = f'https://api.github.com/repos/{owner}/{name}/contents/{path}?ref={branch}'
+        gr = requests.get(get_url, headers=headers, timeout=20)
+        sha = gr.json().get('sha') if gr.status_code == 200 else None
+        payload = {'message': message, 'content': content_b64, 'branch': branch}
+        if sha:
+            payload['sha'] = sha
+        put_url = f'https://api.github.com/repos/{owner}/{name}/contents/{path}'
+        pr = requests.put(put_url, headers=headers, json=payload, timeout=25)
+        if pr.status_code in (200,201):
+            return JsonResponse({'status':'success','path':path,'branch':branch})
+        return JsonResponse({'error':'Failed to commit file','detail':pr.text}, status=pr.status_code)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def github_open_pr(request):
+    try:
+        import os, json
+        data = json.loads(request.body or '{}')
+        repo = data.get('repo','')
+        head = data.get('head')  # branch name
+        base = data.get('base','main')
+        title = data.get('title','NESAKO AI PR')
+        body = data.get('body','Automatski PR')
+        if not (repo and head):
+            return JsonResponse({'error':'Missing repo/head'}, status=400)
+        if repo.startswith('http'):
+            parts = repo.rstrip('/').split('/')[-2:]
+            owner, name = parts[0], parts[1].replace('.git','')
+        else:
+            owner, name = repo.split('/')
+        token = os.getenv('GITHUB_TOKEN')
+        if not token:
+            return JsonResponse({'error': 'GITHUB_TOKEN not configured'}, status=400)
+        headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json'}
+        url = f'https://api.github.com/repos/{owner}/{name}/pulls'
+        pr = requests.post(url, headers=headers, json={'title':title,'head':head,'base':base,'body':body}, timeout=25)
+        if pr.status_code in (200,201):
+            return JsonResponse({'status':'success','pr': pr.json().get('html_url')})
+        return JsonResponse({'error':'Failed to open PR','detail':pr.text}, status=pr.status_code)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# ===== Multi-source verification =====
+@csrf_exempt
+@require_http_methods(["GET"])
+def verify_sources(request):
+    """Aggregate multiple sources for a query. Uses web_check and optional SerpAPI.
+    Query param: q
+    """
+    try:
+        q = request.GET.get('q','').strip()
+        if not q:
+            return JsonResponse({'error':'Missing q'}, status=400)
+        aggregated = []
+        # 1) Existing web_check
+        try:
+            wc = web_check(request)
+            if isinstance(wc, JsonResponse):
+                from django.http import HttpResponse
+                # Extract content from JsonResponse
+                wc_content = wc.content
+                import json as _json
+                wcd = _json.loads(wc_content)
+                aggregated.append({'source':'web_check','content': wcd.get('content','')})
+        except Exception:
+            pass
+        # 2) SerpAPI if available via NESAKOChatbot
+        try:
+            serp = NESAKOChatbot().search_web(q) or []
+            if serp:
+                lines = []
+                for r in serp[:5]:
+                    if isinstance(r, dict):
+                        title = r.get('title') or r.get('name') or 'untitled'
+                        url = r.get('link') or r.get('url') or ''
+                        snippet = r.get('snippet') or r.get('description') or ''
+                        lines.append(f"{title} — {url}\n{snippet}")
+                aggregated.append({'source':'serpapi','content':'\n'.join(lines)})
+        except Exception:
+            pass
+        return JsonResponse({'status':'success','query':q,'sources':aggregated})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
 # --- Fudbal91 integrations (read-only JSON endpoints) ---
 @csrf_exempt
 @require_http_methods(["GET"])
@@ -2447,6 +2740,11 @@ def fudbal_competition(request):
 @require_http_methods(["GET"])
 def lessons_view(request):
     try:
+        # Ensure daily snapshot and push when lessons are queried
+        try:
+            _ensure_daily_lessons_push()
+        except Exception:
+            pass
         lessons = LessonLearned.objects.all().order_by('-created_at')
         data = [{
             "id": l.id,
@@ -2506,6 +2804,80 @@ def module_action(request, module: str, action: str):
         return JsonResponse({"status": "error", "error": "Modul nije pronađen"}, status=404)
     except Exception as e:
         return JsonResponse({"status": "error", "error": str(e)}, status=500)
+
+def _git_autopush(message: str) -> Dict[str, Any]:
+    """Global auto git push helper for function views (origin and git)."""
+    try:
+        repo_dir = str(settings.BASE_DIR)
+        logs = []
+        import subprocess as _sp
+        p1 = _sp.run(['git', 'add', '-A'], cwd=repo_dir, capture_output=True, text=True, timeout=20)
+        logs += [p1.stdout or '', p1.stderr or '']
+        p2 = _sp.run(['git', 'commit', '-m', message], cwd=repo_dir, capture_output=True, text=True, timeout=20)
+        logs += [p2.stdout or '', p2.stderr or '']
+        prem = _sp.run(['git', 'remote'], cwd=repo_dir, capture_output=True, text=True, timeout=10)
+        remotes = [r.strip() for r in (prem.stdout or '').splitlines() if r.strip()]
+        targets = [r for r in ['origin', 'git'] if r in remotes]
+        ok_any = False
+        for rmt in targets or ['origin']:
+            ppush = _sp.run(['git', 'push', rmt, 'main'], cwd=repo_dir, capture_output=True, text=True, timeout=60)
+            logs += [ppush.stdout or '', ppush.stderr or '']
+            ok_any = ok_any or (ppush.returncode == 0)
+        return {'ok': ok_any, 'log': '\n'.join([l for l in logs if l]).strip()}
+    except Exception as e:
+        return {'ok': False, 'log': f'git push error: {str(e)}'}
+
+def _export_lessons_snapshot() -> Dict[str, Any]:
+    """Write all lessons to data/learning/lessons.json for versioning."""
+    try:
+        import json, os
+        from datetime import datetime
+        base = Path(settings.BASE_DIR)
+        out_dir = base / 'data' / 'learning'
+        out_dir.mkdir(parents=True, exist_ok=True)
+        lessons = LessonLearned.objects.all().order_by('-created_at')
+        data = [{
+            'id': l.id,
+            'text': l.lesson_text,
+            'user': l.user,
+            'time': l.created_at.isoformat() if l.created_at else '',
+            'feedback': l.feedback
+        } for l in lessons]
+        # Write rolling snapshot
+        out_path = out_dir / 'lessons.json'
+        out_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+        # Write daily snapshot
+        day_dir = out_dir / 'daily'
+        day_dir.mkdir(parents=True, exist_ok=True)
+        day_str = datetime.now().strftime('%Y-%m-%d')
+        daily_path = day_dir / f'{day_str}.json'
+        daily_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+        return {'ok': True, 'path': str(out_path), 'daily_path': str(daily_path)}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+def _ensure_daily_lessons_push() -> Dict[str, Any]:
+    """Ensure that today's lessons snapshot is exported and pushed once per day.
+    Creates a marker file .pushed-YYYY-MM-DD in data/learning/daily/ to avoid repeats.
+    """
+    try:
+        from datetime import datetime
+        base = Path(settings.BASE_DIR)
+        day_dir = base / 'data' / 'learning' / 'daily'
+        day_dir.mkdir(parents=True, exist_ok=True)
+        day_str = datetime.now().strftime('%Y-%m-%d')
+        marker = day_dir / f'.pushed-{day_str}'
+        if marker.exists():
+            return {'ok': True, 'already_pushed': True}
+        snap = _export_lessons_snapshot()
+        push = _git_autopush(f"chore(lessons): daily snapshot {day_str}") if snap.get('ok') else {'ok': False, 'log': snap.get('error','')}
+        try:
+            marker.write_text('ok', encoding='utf-8')
+        except Exception:
+            pass
+        return {'ok': bool(push.get('ok')), 'snapshot': snap, 'auto_push_log': push.get('log')}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
 
 @csrf_exempt
 @require_http_methods(["POST"])

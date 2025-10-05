@@ -24,6 +24,10 @@ from ai_assistant.views import (
     process_unfinished_tasks,
     modules_manifest,
     module_action,
+    github_create_branch,
+    github_commit_file,
+    github_open_pr,
+    verify_sources,
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
@@ -82,6 +86,12 @@ urlpatterns = [
     # Dynamic modules
     path('modules/manifest/', modules_manifest, name='modules_manifest'),
     path('modules/<str:module>/<str:action>/', module_action, name='module_action'),
+    # GitHub advanced endpoints
+    path('api/github/branch', csrf_exempt(github_create_branch), name='github_create_branch'),
+    path('api/github/commit_file', csrf_exempt(github_commit_file), name='github_commit_file'),
+    path('api/github/pr', csrf_exempt(github_open_pr), name='github_open_pr'),
+    # Multi-source verification
+    path('api/verify-sources', csrf_exempt(verify_sources), name='verify_sources'),
     # Health endpoint
     path('health', health_view, name='health'),
     # Debug: list all routes
