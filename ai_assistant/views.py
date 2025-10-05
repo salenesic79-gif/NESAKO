@@ -443,6 +443,38 @@ class DeepSeekAPI(View):
         except Exception as e:
             return {'changed': False, 'message': f'Greška HTML umetanja: {str(e)}'}
 
+    # --- Simple color mapper for NL commands ---
+    def _color_to_hex(self, val: str) -> Optional[str]:
+        try:
+            if not val:
+                return None
+            v = val.strip().lower()
+            # normalize Serbian latin letters with/without diacritics
+            repl = {
+                'č': 'c', 'ć': 'c', 'š': 's', 'đ': 'dj', 'ž': 'z',
+            }
+            for k, r in repl.items():
+                v = v.replace(k, r)
+            named = {
+                'narandzasto': '#ffa500', 'narandzasta': '#ffa500',
+                'crveno': '#ff0000', 'crvena': '#ff0000',
+                'plavo': '#1e90ff', 'plava': '#1e90ff',
+                'zeleno': '#28a745', 'zelena': '#28a745',
+                'crno': '#000000', 'crna': '#000000',
+                'belo': '#ffffff', 'bela': '#ffffff',
+                'sivo': '#808080', 'siva': '#808080',
+                'ljubicasto': '#800080', 'ljubicasta': '#800080',
+            }
+            if v in named:
+                return named[v]
+            # direct hex
+            import re
+            if re.fullmatch(r'#?[0-9a-fA-F]{6}', val.strip()):
+                return val if val.startswith('#') else '#' + val
+            return None
+        except Exception:
+            return None
+
     # === Advanced file editing helpers ===
     def _safe_path(self, rel_path: str) -> Optional[Path]:
         try:
@@ -1367,10 +1399,26 @@ class DeepSeekAPI(View):
                         'auto_push_log': push.get('log'),
                         'error': res.get('error')
                     })
-                # Generic NL intents: CSS set and HTML insert
+                # Simple NL intents: header color shortcuts
                 # Primers: "postavi css .header background #222", "dodaj html posle .header '<div>Hi</div>'"
                 try:
                     import re
+                    # e.g. "promeni boju headera u narandzasto" or "promeni heder u #ff0000"
+                    m_hdr = re.search(r"promeni\s+(?:boju\s+)?hedera|headera|heder|header\s+u\s+([#\wčćšđž]+)", payload, re.IGNORECASE)
+                    if not m_hdr:
+                        m_hdr = re.search(r"(postavi|promeni)\s+(?:pozadinu|background)\s+(?:hedera|headera|\.header)\s+(?:na|u)\s+([#\wčćšđž]+)", payload, re.IGNORECASE)
+                        hdr_val = m_hdr.group(2) if m_hdr else None
+                    else:
+                        hdr_val = m_hdr.group(1)
+                    if hdr_val:
+                        hexv = self._color_to_hex(hdr_val)
+                        if not hexv:
+                            return JsonResponse({'status': 'ok', 'mode': 'self_mod', 'response': 'Nepoznata boja. Pokušaj npr: narandzasto, plavo ili #1e90ff.'})
+                        res = self._set_css('.header', 'background', hexv)
+                        push = {'ok': False, 'log': ''}
+                        if res.get('changed'):
+                            push = self._auto_git_push(f"feat(self-mod): header background {hexv}")
+                        return JsonResponse({'status': 'success' if res.get('changed') else 'ok', 'mode': 'self_mod', 'response': res.get('message'), 'auto_push': push.get('ok'), 'auto_push_log': push.get('log')})
                     mcss = re.search(r"postavi\s+css\s+(#[\w-]+|\.[\w-]+|[a-zA-Z][\w-]*)\s+([a-zA-Z-]+)\s+(.+)$", payload, re.IGNORECASE)
                     if mcss:
                         sel, prop, val = mcss.group(1), mcss.group(2), mcss.group(3).strip()
@@ -1429,7 +1477,7 @@ class DeepSeekAPI(View):
                 return JsonResponse({
                     'status': 'ok',
                     'mode': 'self_mod_help',
-                    'response': 'SAMOPROMENA podržava: (1) promeni heder u <boja/#hex>; (2) kreiraj modul <ime> sa akcijama <a,b,c>; (3) postavi css <selektor> <svojstvo> <vrednost>; (4) dodaj html <pre|posle|u> <selektor> <html>; (5) zameni u <putanja> "staro" sa "novo"; (6) dodaj import <linija> u <putanja>; (7) dodaj na kraj <putanja> "tekst".',
+                    'response': 'SAMOPROMENA: (1) promeni heder u [boja/#hex]; (2) kreiraj modul [ime] sa akcijama [a,b,c]; (3) postavi css [selektor] [svojstvo] [vrednost]; (4) dodaj html [pre|posle|u] [selektor] [html]; (5) zameni u [putanja] "staro" sa "novo"; (6) dodaj import [linija] u [putanja]; (7) dodaj na kraj [putanja] "tekst".',
                 })
             
             # Security threat detection - SAMO za kritične pretnje
