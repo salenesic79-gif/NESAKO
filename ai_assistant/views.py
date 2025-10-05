@@ -3361,14 +3361,28 @@ class LoginView(View):
         return TemplateResponse(request, 'login.html')
     
     def post(self, request):
-        username = request.POST.get('username', '')
-        password = request.POST.get('password', '')
-        
-        if username == 'nesako' and password == 'nesako2024':
-            request.session['authenticated'] = True
-            return redirect('/')
-        else:
-            return redirect('/login/')
+        # Support both application/json and form submissions
+        username = ''
+        password = ''
+        try:
+            if request.content_type and 'application/json' in request.content_type:
+                try:
+                    data = json.loads(request.body or '{}')
+                except Exception:
+                    data = {}
+                username = str(data.get('username', '')).strip()
+                password = str(data.get('password', '')).strip()
+            else:
+                username = str(request.POST.get('username', '')).strip()
+                password = str(request.POST.get('password', '')).strip()
+
+            if username == 'nesako' and password == 'nesako2024':
+                request.session['authenticated'] = True
+                return JsonResponse({'success': True, 'redirect': '/'})
+            else:
+                return JsonResponse({'success': False, 'error': 'Pogrešno korisničko ime ili lozinka.'}, status=401)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': f'Greška: {str(e)}'}, status=500)
 
 
 class LogoutView(View):

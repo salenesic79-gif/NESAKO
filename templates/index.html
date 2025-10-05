@@ -2582,7 +2582,12 @@ window.enableSelfModification = function() {
       try { if (typeof addMessage === 'function') addMessage(message, true); } catch(e) {}
       try { if (typeof updateStatus === 'function') updateStatus('Izvršavam samopromenu...', true); } catch(e) {}
       fetch('/api/chat/', {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'X-CSRFToken': (typeof getCSRFToken === 'function') ? getCSRFToken() : ''
+        },
+        credentials: 'same-origin',
         body: JSON.stringify({
           instruction: `SAMOPROMENA: ${message}`,
           conversation_history: (window.conversationHistory||[]),
@@ -2614,7 +2619,12 @@ window.enableSelfModification = function() {
       try { if (typeof addMessage === 'function') addMessage(message, true); } catch(e) {}
       try { if (typeof updateStatus === 'function') updateStatus('Izvršavam samopromenu...', true); } catch(e) {}
       fetch('/api/chat/', {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'X-CSRFToken': (typeof getCSRFToken === 'function') ? getCSRFToken() : ''
+        },
+        credentials: 'same-origin',
         body: JSON.stringify({
           instruction: `SAMOPROMENA: ${message}`,
           conversation_history: (window.conversationHistory||[]),
