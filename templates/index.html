@@ -2596,8 +2596,6 @@ async function fetchAndShowSources(messageDiv, query, btn) {
         // Initialize task panel
         updateTaskPanel();
     </script>
-</body>
-</html>
 <script>
 // Runtime hotfix: define flags and wire self-modification without touching existing code
 window.selfModifyArmed = (typeof window.selfModifyArmed !== 'undefined') ? window.selfModifyArmed : false;
@@ -2611,7 +2609,7 @@ window.enableSelfModification = function() {
   try { if (typeof closeHamburgerMenu === 'function') closeHamburgerMenu(); } catch(e) {}
   window.selfModifyArmed = true;
   window.autoApprovePlans = true;
-  try { if (typeof addMessage === 'function') addMessage(' Samopromena aktivirana! Sledeća poruka je INSTRUKCIJA i biće automatski izvršena.', false); } catch(e) {}
+  try { if (typeof addMessage === 'function') addMessage('🔄 Samopromena aktivirana! Sledeća poruka je INSTRUKCIJA i biće automatski izvršena.', false); } catch(e) {}
 };
 
 // Override sendMessage to execute self-mod immediately when armed
@@ -2628,7 +2626,7 @@ window.enableSelfModification = function() {
       fetch('/api/chat/', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
-          instruction: SAMOPROMENA: ,
+          instruction: `SAMOPROMENA: ${message}`,
           conversation_history: (window.conversationHistory||[]),
           allow_self_modification: true,
           auto_execute: true,
@@ -2637,7 +2635,7 @@ window.enableSelfModification = function() {
       })
       .then(r => r.json())
       .then(d => { try { if (typeof handleApiResponse === 'function') handleApiResponse(d); } catch(e) {} })
-      .catch(() => { try { if (typeof addAIMessage === 'function') addAIMessage(' Greška pri samopromeni', false); if (typeof updateStatus === 'function') updateStatus('Greška', false); } catch(e) {} })
+      .catch(() => { try { if (typeof addAIMessage === 'function') addAIMessage('❌ Greška pri samopromeni', false); if (typeof updateStatus === 'function') updateStatus('Greška', false); } catch(e) {} })
       .finally(() => { window.selfModifyArmed = false; });
       return;
     }
@@ -2649,7 +2647,7 @@ window.enableSelfModification = function() {
       fetch('/api/chat/', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
-          instruction: SAMOPROMENA: ,
+          instruction: `SAMOPROMENA: ${message}`,
           conversation_history: (window.conversationHistory||[]),
           allow_self_modification: true,
           auto_execute: true,
@@ -2658,7 +2656,7 @@ window.enableSelfModification = function() {
       })
       .then(r => r.json())
       .then(d => { try { if (typeof handleApiResponse === 'function') handleApiResponse(d); } catch(e) {} })
-      .catch(() => { try { if (typeof addAIMessage === 'function') addAIMessage(' Greška pri samopromeni', false); if (typeof updateStatus === 'function') updateStatus('Greška', false); } catch(e) {} });
+      .catch(() => { try { if (typeof addAIMessage === 'function') addAIMessage('❌ Greška pri samopromeni', false); if (typeof updateStatus === 'function') updateStatus('Greška', false); } catch(e) {} });
       return;
     }
 
@@ -2666,3 +2664,5 @@ window.enableSelfModification = function() {
   };
 })();
 </script>
+</body>
+</html>
