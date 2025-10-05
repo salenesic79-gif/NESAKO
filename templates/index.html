@@ -1810,6 +1810,13 @@ async function fetchAndShowSources(messageDiv, query, btn) {
                 // If backend performed self-modification, reload to apply new template/styles
                 try {
                     if ((data.mode === 'self_mod') && (data.status === 'success' || data.status === 'ok')) {
+                        // Immediate visual feedback regardless of server-side template caching
+                        try {
+                            if (data.color_hex) {
+                                const hdr = document.querySelector('.header');
+                                if (hdr) hdr.style.background = data.color_hex;
+                            }
+                        } catch (e) {}
                         setTimeout(() => { try { window.location.reload(); } catch(e){} }, 400);
                     }
                 } catch(e){}

@@ -22,6 +22,8 @@ from ai_assistant.views import (
     preferences_view,
     get_unfinished_tasks,
     process_unfinished_tasks,
+    modules_manifest,
+    module_action,
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
@@ -77,6 +79,9 @@ urlpatterns = [
     path('api/process-unfinished-tasks/', csrf_exempt(process_unfinished_tasks), name='process_unfinished_tasks'),
     # Explicit manifest route (safety net)
     path('manifest.json', manifest_view, name='manifest_json'),
+    # Dynamic modules
+    path('modules/manifest/', modules_manifest, name='modules_manifest'),
+    path('modules/<str:module>/<str:action>/', module_action, name='module_action'),
     # Health endpoint
     path('health', health_view, name='health'),
     # Debug: list all routes
