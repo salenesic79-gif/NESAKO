@@ -2639,5 +2639,41 @@ window.enableSelfModification = function() {
   };
   })();
   </script>
+  <script>
+    // Global error banner + UI recovery watchdog
+    (function(){
+      // Show errors in-UI so user sees what's wrong
+      window.onerror = function(message, source, lineno, colno, error){
+        try {
+          const banner = document.createElement('div');
+          banner.style.cssText = 'position:fixed;bottom:10px;left:10px;right:10px;background:#dc3545;color:#fff;padding:10px 14px;border-radius:8px;z-index:100000;font-size:12px;box-shadow:0 4px 10px rgba(0,0,0,.2)';
+          banner.textContent = 'JS greška: ' + message + ' (' + lineno + ':' + colno + ')';
+          document.body.appendChild(banner);
+          setTimeout(()=>{ try{ document.body.removeChild(banner);}catch(e){} }, 6000);
+        } catch(e) {}
+        // Do not prevent default
+      };
+
+      // Watchdog: if UI ostane disable-ovan > 8s, oslobodi
+      setInterval(function(){
+        try {
+          const el = document.getElementById('user-input');
+          const btn = document.getElementById('send-btn');
+          if (window.isTyping && (window.__typingSince__ ? (Date.now()-window.__typingSince__)>8000 : true)){
+            window.isTyping = false;
+            if (el) { el.disabled = false; }
+            if (btn) { btn.disabled = false; }
+            if (typeof updateStatus === 'function') updateStatus('Spreman za rad', false);
+          }
+          if (window.isTyping && !window.__typingSince__) {
+            window.__typingSince__ = Date.now();
+          }
+          if (!window.isTyping) {
+            window.__typingSince__ = null;
+          }
+        } catch(e) {}
+      }, 1000);
+    })();
+  </script>
   </body>
   </html>
