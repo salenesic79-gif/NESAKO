@@ -1404,12 +1404,10 @@ class DeepSeekAPI(View):
                 try:
                     import re
                     # e.g. "promeni boju headera u narandzasto" or "promeni heder u #ff0000"
-                    m_hdr = re.search(r"promeni\s+(?:boju\s+)?hedera|headera|heder|header\s+u\s+([#\wčćšđž]+)", payload, re.IGNORECASE)
+                    m_hdr = re.search(r"promeni\s+(?:boju\s+)?(?:hedera|headera|heder|header)\s+(?:na|u)?\s+([#\wčćšđž]+)", payload, re.IGNORECASE)
                     if not m_hdr:
-                        m_hdr = re.search(r"(postavi|promeni)\s+(?:pozadinu|background)\s+(?:hedera|headera|\.header)\s+(?:na|u)\s+([#\wčćšđž]+)", payload, re.IGNORECASE)
-                        hdr_val = m_hdr.group(2) if m_hdr else None
-                    else:
-                        hdr_val = m_hdr.group(1)
+                        m_hdr = re.search(r"(?:postavi|promeni)\s+(?:pozadinu|background)\s+(?:hedera|headera|\.header)\s+(?:na|u)?\s+([#\wčćšđž]+)", payload, re.IGNORECASE)
+                    hdr_val = m_hdr.group(1) if m_hdr else None
                     if hdr_val:
                         hexv = self._color_to_hex(hdr_val)
                         if not hexv:
