@@ -475,6 +475,28 @@ class DeepSeekAPI(View):
         except Exception:
             return None
 
+    # --- NL: detect simple self-mod payload without explicit prefix ---
+    def _extract_simple_selfmod_payload(self, text: str) -> Optional[str]:
+        try:
+            if not text:
+                return None
+            t = text.strip().lower()
+            import re
+            # Header/background color intents, even without prefix
+            if re.search(r"promeni\s+(?:boju\s+)?(?:hedera|headera|heder|header)\s+(?:na|u)?\s+([#\wčćšđž]+)", t, re.IGNORECASE):
+                return text.strip()
+            if re.search(r"(?:postavi|promeni)\s+(?:pozadinu|background)\s+(?:hedera|headera|\.header)\s+(?:na|u)?\s+([#\wčćšđž]+)", t, re.IGNORECASE):
+                return text.strip()
+            # Generic CSS set like: postavi css .sel prop val
+            if re.search(r"postavi\s+css\s+(#[\w-]+|\.[\w-]+|[a-zA-Z][\w-]*)\s+([a-zA-Z-]+)\s+(.+)$", t, re.IGNORECASE):
+                return text.strip()
+            # HTML insert
+            if re.search(r"(dodaj|umetni)\s+html\s+(pre|posle|u|into)\s+(#[\w-]+|\.[\w-]+|[a-zA-Z][\w-]*)\s+(.+)$", t, re.IGNORECASE):
+                return text.strip()
+            return None
+        except Exception:
+            return None
+
     # === Advanced file editing helpers ===
     def _safe_path(self, rel_path: str) -> Optional[Path]:
         try:
@@ -1352,9 +1374,11 @@ class DeepSeekAPI(View):
                 }, status=400)
 
             # Self-modification: minimal executor + module scaffolding
-            if user_input.strip().upper().startswith('SAMOPROMENA:'):
+            simple_payload = self._extract_simple_selfmod_payload(user_input)
+            sm_prefix = user_input.strip().upper().startswith('SAMOPROMENA:')
+            if sm_prefix or simple_payload:
                 try:
-                    payload = user_input.split(':', 1)[1].strip()
+                    payload = user_input.split(':', 1)[1].strip() if sm_prefix else (simple_payload or '')
                 except Exception:
                     payload = ''
                 # Parse color intent for header
